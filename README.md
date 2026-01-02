@@ -110,23 +110,6 @@ launchctl setenv OLLAMA_ORIGINS "*"
    ```
 3. 重启服务: `sudo systemctl daemon-reload && sudo systemctl restart ollama`
 
-## 📝 更新日志
-
-### v3.3
-- 优化项目结构，完善文档和同步机制
-
-### v3.2
-- 推送测试：验证GitHub Webhook与Greasy Fork同步功能
-
-### v3.1
-- 多维度屏蔽：支持按账号名称、视频简介、#话题标签三种方式检测关键字
-- 优化用户界面
-
-### v3.0
-- 新增极速模式
-- AI智能筛选功能
-- 分辨率筛选功能
-
 ## 🔗 相关链接
 
 | 平台 | 链接 |
