@@ -1,7 +1,7 @@
 # 🎬 网页抖音体验增强
 
 [![Greasy Fork](https://img.shields.io/greasyfork/v/539942?label=Greasy%20Fork&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/539942)
-[![GitHub](https://img.shields.io/github/v/release/Frequenk/douyin-enhancer-userscript?label=GitHub&logo=github)](https://github.com/Frequenk/douyin-enhancer-userscript)
+[![GitHub stars](https://img.shields.io/github/stars/Frequenk/douyin-enhancer-userscript?style=flat&logo=github&label=Stars&color=white)](https://github.com/Frequenk/douyin-enhancer-userscript/stargazers)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 一个强大的油猴脚本，为网页版抖音提供更纯净、更高效的浏览体验。
