@@ -1,0 +1,11 @@
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# IDE配置
+.vscode/
+.idea/
+
+# 临时文件
+*.tmp
+*.log
