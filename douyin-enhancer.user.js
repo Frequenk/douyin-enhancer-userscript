@@ -6,7 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 3.1
+// @version 3.2
+// @changelog 推送测试：验证GitHub Webhook与Greasy Fork同步功能
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（自动点赞）、极速模式
 // @author Frequenk
 // @license GPL-3.0 License
