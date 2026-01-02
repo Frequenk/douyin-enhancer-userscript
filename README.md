@@ -82,14 +82,33 @@
 ollama pull qwen3-vl:8b
 ```
 
-### 2. 开启跨域模式
-设置系统环境变量：
-```
-OLLAMA_HOST=0.0.0.0
-OLLAMA_ORIGINS=*
+### 2. 配置跨域访问
+由于 Ollama 默认仅允许本地访问，脚本需要调用本地API，因此必须配置 **跨域允许**。
+
+**Windows:**
+1. 打开 **控制面板** -> **系统** -> **高级系统设置** -> **环境变量**
+2. 在 **用户变量** 中点击 **新建**，添加以下两个变量：
+   - 变量名: `OLLAMA_HOST`，变量值: `0.0.0.0`
+   - 变量名: `OLLAMA_ORIGINS`，变量值: `*`
+3. 点击确定保存，重启 Ollama
+
+**macOS:**
+打开终端，运行以下命令，然后重启 Ollama 应用：
+```bash
+launchctl setenv OLLAMA_HOST "0.0.0.0"
+launchctl setenv OLLAMA_ORIGINS "*"
 ```
 
-> 📖 参考配置教程：[Ollama跨域设置指南](https://lobehub.com/zh/docs/self-hosting/examples/ollama)
+**Linux:**
+如果使用 systemd 运行：
+1. 编辑服务配置: `sudo systemctl edit ollama.service`
+2. 在 `[Service]` 下方添加：
+   ```ini
+   [Service]
+   Environment="OLLAMA_HOST=0.0.0.0"
+   Environment="OLLAMA_ORIGINS=*"
+   ```
+3. 重启服务: `sudo systemctl daemon-reload && sudo systemctl restart ollama`
 
 ## 📝 更新日志
 

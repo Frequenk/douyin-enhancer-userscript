@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 3.3
-// @changelog 优化项目结构，完善文档和同步机制
+// @version 3.4
+// @changelog 优化文档描述，调整跨域配置指引
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（自动点赞）、极速模式
 // @author Frequenk
 // @license GPL-3.0 License
@@ -501,44 +501,73 @@
                 background: rgba(0, 0, 0, 0.95);
                 border: 2px solid rgba(254, 44, 85, 0.8);
                 color: white;
-                padding: 20px;
-                border-radius: 8px;
+                padding: 25px;
+                border-radius: 12px;
                 z-index: 10001;
-                max-width: 400px;
-                text-align: center;
+                max-width: 500px;
+                max-height: 80vh;
+                overflow-y: auto;
+                text-align: left;
                 font-size: 14px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             `;
+
+            const commonStyle = `background: rgba(255, 255, 255, 0.1); padding: 8px; border-radius: 4px; font-family: monospace; margin: 5px 0; display: block; user-select: text;`;
+            const h3Style = `color: #fe2c55; margin: 15px 0 8px 0; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;`;
+
             dialog.innerHTML = `
-                <div style="margin-bottom: 20px;">
-                    <div style="color: #fe2c55; font-size: 40px; margin-bottom: 15px;">⚠️</div>
-                    <div style="text-align: left; line-height: 1.6;">
-                        <div style="margin-bottom: 12px;">
-                            <strong>请检查以下配置：</strong>
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            1. 安装 <a href="https://ollama.com/" target="_blank" style="color: #fe2c55; text-decoration: underline;">Ollama</a>
-                            并下载视觉模型（默认：qwen3-vl:8b）
-                        </div>
-                        <div>
-                            2. 开启Ollama跨域模式，设置环境变量：
-                            <div style="margin-left: 20px; margin-top: 5px; font-family: monospace; background: rgba(255, 255, 255, 0.1); padding: 5px; border-radius: 4px;">
-                                OLLAMA_HOST=0.0.0.0<br>
-                                OLLAMA_ORIGINS=*
-                            </div>
-                            <div style="margin-top: 8px;">
-                                参考配置教程：<a href="https://lobehub.com/zh/docs/self-hosting/examples/ollama" target="_blank"
-                                   style="color: #fe2c55; text-decoration: underline;">Ollama跨域设置指南</a>
-                            </div>
-                        </div>
-                    </div>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 32px; margin-bottom: 10px;">⚠️ 连接失败</div>
+                    <p style="color: #aaa; font-size: 13px;">请确保 <a href="https://ollama.com/" target="_blank" style="color: #fe2c55;">Ollama</a> 已运行并配置跨域访问</p>
                 </div>
-                <button class="error-dialog-confirm" style="padding: 8px 20px; background: #fe2c55; color: white;
-                        border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">确定</button>
+
+                <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="${h3Style}">🖥️ Windows 配置</h3>
+                    <ol style="padding-left: 20px; margin: 0; line-height: 1.6;">
+                        <li>打开 <strong>控制面板</strong> -> 系统 -> 高级系统设置 -> 环境变量</li>
+                        <li>在 <strong>用户变量</strong> 点击新建，添加两个变量：
+                            <div style="${commonStyle}">
+                                OLLAMA_HOST = 0.0.0.0<br>
+                                OLLAMA_ORIGINS = *
+                            </div>
+                        </li>
+                        <li>点击确定保存，重启 Ollama</li>
+                    </ol>
+
+                    <h3 style="${h3Style}">🍎 macOS 配置</h3>
+                    <div style="margin-bottom: 5px;">打开终端运行以下命令，然后重启 Ollama：</div>
+                    <code style="${commonStyle}">
+                        launchctl setenv OLLAMA_HOST "0.0.0.0"<br>
+                        launchctl setenv OLLAMA_ORIGINS "*"
+                    </code>
+
+                    <h3 style="${h3Style}">🐧 Linux (systemd) 配置</h3>
+                    <div style="margin-bottom: 5px;">1. 编辑服务配置: <code style="background:rgba(255,255,255,0.1); px-1">sudo systemctl edit ollama.service</code></div>
+                    <div style="margin-bottom: 5px;">2. 在 <code style="color:#aaa">[Service]</code> 下方添加：</div>
+                    <code style="${commonStyle}">
+                        [Service]<br>
+                        Environment="OLLAMA_HOST=0.0.0.0"<br>
+                        Environment="OLLAMA_ORIGINS=*"
+                    </code>
+                    <div style="margin-top: 5px;">3. 重启服务: <code style="background:rgba(255,255,255,0.1); px-1">sudo systemctl daemon-reload && sudo systemctl restart ollama</code></div>
+                </div>
+
+                <div style="text-align: center;">
+                    <div class="error-dialog-close" style="margin-top: 10px; font-size: 14px; color: #fe2c55; cursor: pointer; text-decoration: underline;">关闭</div>
+                </div>
             `;
+
             document.body.appendChild(dialog);
 
-            dialog.querySelector('.error-dialog-confirm').addEventListener('click', () => {
+            // 点击关闭文字
+            dialog.querySelector('.error-dialog-close').addEventListener('click', () => {
                 dialog.remove();
+            });
+
+            // 点击背景关闭
+            dialog.addEventListener('click', (e) => {
+                if (e.target === dialog) dialog.remove();
             });
         }
     }
