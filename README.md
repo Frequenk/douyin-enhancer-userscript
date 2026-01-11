@@ -74,15 +74,31 @@
 
 ## 🤖 AI功能配置 (可选)
 
-如需使用AI智能筛选功能，请按以下步骤配置：
+如需使用AI智能筛选功能，可选择以下任一方式配置：
 
-### 1. 安装 Ollama
+### 方式一：使用智谱AI（免费在线）⭐ 推荐
+
+无需本地安装任何软件，注册即可免费使用！
+
+1. 点击 [注册智谱账号](https://www.bigmodel.cn/invite?icode=GrgfvImGKwdq1i6nWogBXQZ3c5owLmCCcMQXWcJRS8E%3D) 获取免费 API Key
+2. 在脚本设置中选择「智谱AI」服务商
+3. 粘贴 API Key，选择免费模型即可使用
+
+| 免费模型 | 特点 |
+|----------|------|
+| **GLM-4.6V-Flash** | 视觉推理，速度快（推荐）|
+
+### 方式二：使用 Ollama（本地部署）
+
+如果你有本地 GPU 或希望完全离线使用：
+
+#### 1. 安装 Ollama
 下载并安装 [Ollama](https://ollama.com/)，然后下载视觉模型：
 ```bash
 ollama pull qwen3-vl:8b
 ```
 
-### 2. 配置跨域访问
+#### 2. 配置跨域访问
 由于 Ollama 默认仅允许本地访问，脚本需要调用本地API，因此必须配置 **跨域允许**。
 
 **Windows:**
