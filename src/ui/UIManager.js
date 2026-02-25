@@ -1,4 +1,5 @@
 import { SELECTORS } from '../core/selectors.js';
+import { STAT_FIELDS } from '../stats/StatsTracker.js';
 
 export class UIFactory {
         static createDialog(className, title, content, onSave, onCancel) {
@@ -86,6 +87,32 @@ export class UIFactory {
                     e.stopPropagation();
                     onClick();
                 });
+            }
+
+            return btnContainer;
+        }
+
+        static createInfoButton(html, className, onClick = null) {
+            const btnContainer = document.createElement('xg-icon');
+            btnContainer.className = `xgplayer-autoplay-setting ${className}`;
+            btnContainer.style.cursor = 'pointer';
+
+            btnContainer.innerHTML = `
+                <div class="xgplayer-icon">
+                    <div class="xgplayer-setting-label">
+                        <span class="xgplayer-setting-title" style="cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+                            ${html}
+                        </span>
+                    </div>
+                </div>`;
+
+            if (onClick) {
+                const handler = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClick();
+                };
+                btnContainer.addEventListener('pointerdown', handler);
             }
 
             return btnContainer;
@@ -316,15 +343,27 @@ export class UIFactory {
 
     // ========== UI管理器 ==========
     export class UIManager {
-        constructor(config, videoController, notificationManager) {
+        constructor(config, videoController, notificationManager, statsTracker = null) {
             this.config = config;
             this.videoController = videoController;
             this.notificationManager = notificationManager;
+            this.statsTracker = statsTracker;
+            if (this.statsTracker) {
+                this.statsTracker.onUpdate(() => {
+                    this.updateStatsSummaryText();
+                });
+            }
             this.initButtons();
         }
 
         initButtons() {
             this.buttonConfigs = [
+                {
+                    type: 'info',
+                    text: this.getStatsLabel(),
+                    className: 'stats-summary-button',
+                    onClick: () => this.showStatsDialog()
+                },
                 {
                     text: '跳直播',
                     className: 'skip-live-button',
@@ -372,39 +411,58 @@ export class UIFactory {
             document.querySelectorAll(SELECTORS.settingsPanel).forEach(panel => {
                 const parent = panel.parentNode;
                 if (!parent) return;
+                const flexDirection = getComputedStyle(parent).flexDirection;
+                const isRowReverse = flexDirection === 'row-reverse';
 
-                let lastButton = panel;
                 this.buttonConfigs.forEach(config => {
                     let button = parent.querySelector(`.${config.className}`);
                     if (!button) {
-                        button = UIFactory.createToggleButton(
-                            config.text,
-                            config.className,
-                            this.config.isEnabled(config.configKey),
-                            (state) => {
-                                this.config.setEnabled(config.configKey, state);
-                                if (config.configKey === 'skipLive') {
-                                    this.notificationManager.showMessage(`功能开关: 跳过直播已 ${state ? '✅' : '❌'}`);
-                                } else if (config.configKey === 'speedMode') {
-                                    document.dispatchEvent(new CustomEvent('douyin-speed-mode-updated'));
-                                }
-                            },
-                            config.onClick,
-                            config.shortcut
-                        );
-                        parent.insertBefore(button, lastButton.nextSibling);
+                        if (config.type === 'info') {
+                            button = UIFactory.createInfoButton(
+                                config.text,
+                                config.className,
+                                config.onClick
+                            );
+                        } else {
+                            button = UIFactory.createToggleButton(
+                                config.text,
+                                config.className,
+                                this.config.isEnabled(config.configKey),
+                                (state) => {
+                                    this.config.setEnabled(config.configKey, state);
+                                    if (config.configKey === 'skipLive') {
+                                        this.notificationManager.showMessage(`功能开关: 跳过直播已 ${state ? '✅' : '❌'}`);
+                                    } else if (config.configKey === 'speedMode') {
+                                        document.dispatchEvent(new CustomEvent('douyin-speed-mode-updated'));
+                                    }
+                                },
+                                config.onClick,
+                                config.shortcut
+                            );
+                        }
+                        parent.insertBefore(button, panel);
                     }
-                    const isEnabled = this.config.isEnabled(config.configKey);
-                    const switchEl = button.querySelector('.xg-switch');
-                    if (switchEl) {
-                        switchEl.classList.toggle('xg-switch-checked', isEnabled);
-                        switchEl.setAttribute('aria-checked', String(isEnabled));
+                    if (config.type === 'info') {
+                        button.style.order = isRowReverse ? '1' : '-1';
+                    } else {
+                        button.style.order = '0';
+                    }
+                    if (config.type !== 'info') {
+                        const isEnabled = this.config.isEnabled(config.configKey);
+                        const switchEl = button.querySelector('.xg-switch');
+                        if (switchEl) {
+                            switchEl.classList.toggle('xg-switch-checked', isEnabled);
+                            switchEl.setAttribute('aria-checked', String(isEnabled));
+                        }
                     }
                     const titleEl = button.querySelector('.xgplayer-setting-title');
                     if (titleEl && typeof config.text === 'string') {
-                        titleEl.textContent = config.text;
+                        if (config.type === 'info') {
+                            titleEl.innerHTML = this.getStatsLabelHtml();
+                        } else {
+                            titleEl.textContent = config.text;
+                        }
                     }
-                    lastButton = button;
                 });
             });
         }
@@ -445,6 +503,409 @@ export class UIFactory {
             document.querySelectorAll('.resolution-filter-button .xgplayer-setting-title').forEach(el => {
                 el.textContent = `${resolution}筛选`;
             });
+        }
+
+        updateStatsSummaryText() {
+            const html = this.getStatsLabelHtml();
+            document.querySelectorAll('.stats-summary-button .xgplayer-setting-title').forEach(el => {
+                el.innerHTML = html;
+            });
+        }
+
+        getStatsLabel() {
+            if (!this.statsTracker) return '今0 00:00:00';
+            const snapshot = this.statsTracker.getSnapshot();
+            const count = snapshot.videoCount || 0;
+            const duration = this.formatDuration(snapshot.watchTimeSec || 0);
+            return `今${count} ${duration}`;
+        }
+
+        getStatsLabelHtml() {
+            if (!this.statsTracker) {
+                return `
+                    <span class="stats-pill" style="background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.96); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.3); white-space: nowrap; line-height: 16px;">
+                        今 0 00:00:00
+                    </span>
+                `;
+            }
+            const snapshot = this.statsTracker.getSnapshot();
+            const count = snapshot.videoCount || 0;
+            const duration = this.formatDuration(snapshot.watchTimeSec || 0);
+            return `
+                <span class="stats-pill" style="background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.96); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.3); white-space: nowrap; line-height: 16px;">
+                    今 ${count} ${duration}
+                </span>
+            `;
+        }
+
+        formatDuration(totalSeconds) {
+            const seconds = Math.max(0, Math.floor(totalSeconds || 0));
+            const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+            const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+            const s = String(seconds % 60).padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        }
+
+        async showStatsDialog() {
+            if (!this.statsTracker) return;
+            if (this.statsDialogBusy) return;
+            this.statsDialogBusy = true;
+            const existing = document.querySelector('.stats-dialog');
+            if (existing) {
+                existing.remove();
+                setTimeout(() => {
+                    this.statsDialogBusy = false;
+                }, 120);
+                return;
+            }
+
+            const dialog = document.createElement('div');
+            dialog.className = 'stats-dialog';
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                z-index: 10002;
+                width: min(900px, 80vw);
+                max-height: 86vh;
+                overflow: auto;
+                padding: 20px;
+                color: white;
+                font-size: 13px;
+            `;
+
+            dialog.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="font-size: 16px; font-weight: 600;">统计面板</div>
+                    <button class="stats-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">关闭</button>
+                </div>
+
+                <div class="stats-summary-section" style="padding: 12px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 600;">统计概览</div>
+                        <div style="position: relative; display: inline-block; margin-left: auto;">
+                            <select class="stats-range-select" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; padding: 4px 22px 4px 8px; appearance: none;">
+                                <option value="day">本日</option>
+                                <option value="month">本月</option>
+                                <option value="year">本年</option>
+                                <option value="all">所有</option>
+                            </select>
+                            <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; color: rgba(255,255,255,0.7);">▼</span>
+                        </div>
+                    </div>
+                    <div class="stats-summary-grid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;"></div>
+                </div>
+
+                <div class="stats-year-section" style="padding: 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                        <div style="font-weight: 700;">年度视图</div>
+                        <div style="position: relative; display: inline-block; margin-left: auto;">
+                            <select class="stats-year-select" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; padding: 4px 22px 4px 8px; appearance: none;"></select>
+                            <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; color: rgba(255,255,255,0.7);">▼</span>
+                        </div>
+                    </div>
+                    <div class="stats-heatmap-section" style="padding: 8px 6px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 12px;">
+                        <div style="font-weight: 600; margin-bottom: 6px;">年度热力图</div>
+                        <div class="stats-heatmap" style="display: flex; gap: 4px; align-items: flex-start; padding-bottom: 4px; width: 100%;"></div>
+                    </div>
+
+                    <div class="stats-chart-section" style="padding: 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 12px;">
+                        <div style="font-weight: 600; margin-bottom: 6px;">每个月刷视频数量</div>
+                        <div class="stats-bar-video" style="height: 150px; display: flex; align-items: flex-end; gap: 6px; padding-top: 10px;"></div>
+                    </div>
+
+                    <div class="stats-chart-section" style="padding: 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                        <div style="font-weight: 600; margin-bottom: 6px;">每个月刷视频时间</div>
+                        <div class="stats-bar-time" style="height: 150px; display: flex; align-items: flex-end; gap: 6px; padding-top: 10px;"></div>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <div style="color: rgba(255,255,255,0.85); font-weight: 600;">数据导入/导出</div>
+                    <div style="color: rgba(255,255,255,0.6); font-size: 11px;">导入同日数据将覆盖本地</div>
+                </div>
+                <div class="stats-actions" style="display: flex; gap: 10px;">
+                    <button class="stats-export-btn" style="flex: 1; padding: 8px 10px; background: #2d8cf0; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">导出数据</button>
+                    <button class="stats-import-btn" style="flex: 1; padding: 8px 10px; background: #19be6b; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">导入数据</button>
+                </div>
+            `;
+
+            document.body.appendChild(dialog);
+
+            dialog.querySelector('.stats-close-btn').addEventListener('click', () => dialog.remove());
+            dialog.addEventListener('click', (e) => {
+                if (e.target === dialog) dialog.remove();
+            });
+
+            const rangeSelect = dialog.querySelector('.stats-range-select');
+            const yearSelect = dialog.querySelector('.stats-year-select');
+            const store = this.statsTracker.getStore();
+
+            const allRecords = await store.getAll();
+            const years = Array.from(new Set(allRecords.map(r => Number((r.date || '').slice(0, 4))).filter(Boolean))).sort();
+            const currentYear = new Date().getFullYear();
+            if (!years.includes(currentYear)) years.push(currentYear);
+            years.sort();
+
+            yearSelect.innerHTML = years.map(year => `<option value="${year}" ${year === currentYear ? 'selected' : ''}>${year}</option>`).join('');
+
+            const renderSummary = async () => {
+                const range = rangeSelect.value;
+                const records = await this.getRangeRecords(store, range);
+                const summary = this.aggregate(records);
+                const grid = dialog.querySelector('.stats-summary-grid');
+                grid.innerHTML = this.renderSummaryCards(summary);
+            };
+
+            const renderYearViews = async () => {
+                const year = Number(yearSelect.value);
+                const yearRecords = await this.getYearRecords(store, year);
+                this.renderHeatmap(dialog.querySelector('.stats-heatmap'), yearRecords, year);
+                this.renderMonthlyBars(dialog.querySelector('.stats-bar-video'), yearRecords, 'videoCount', value => `${value}`);
+                this.renderMonthlyBars(dialog.querySelector('.stats-bar-time'), yearRecords, 'watchTimeSec', value => this.formatDuration(value));
+            };
+
+            rangeSelect.addEventListener('change', renderSummary);
+            yearSelect.addEventListener('change', renderYearViews);
+
+            dialog.querySelector('.stats-export-btn').addEventListener('click', async () => {
+                const records = await store.getAll();
+                const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'douyin-stats.json';
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            });
+
+            dialog.querySelector('.stats-import-btn').addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'application/json';
+                input.onchange = async () => {
+                    if (!input.files || input.files.length === 0) return;
+                    const file = input.files[0];
+                    const text = await file.text();
+                    let records = [];
+                    try {
+                        records = JSON.parse(text);
+                    } catch (err) {
+                        alert('导入失败：文件格式不正确');
+                        return;
+                    }
+                    const confirmed = confirm('如有重复日期，将以导入数据为准，覆盖本地存量。是否继续？');
+                    if (!confirmed) return;
+                    const normalized = records
+                        .filter(item => item && typeof item.date === 'string')
+                        .map(item => this.normalizeRecord(item));
+                    await store.importAll(normalized);
+                    await this.statsTracker.refreshCurrent();
+                    await renderSummary();
+                    await renderYearViews();
+                    this.notificationManager.showMessage('📥 数据导入完成');
+                };
+                input.click();
+            });
+
+            await renderSummary();
+            await renderYearViews();
+            setTimeout(() => {
+                this.statsDialogBusy = false;
+            }, 120);
+        }
+
+        normalizeRecord(record) {
+            const normalized = { date: record.date };
+            STAT_FIELDS.forEach(field => {
+                const value = Number(record[field]);
+                normalized[field] = Number.isFinite(value) ? value : 0;
+            });
+            return normalized;
+        }
+
+        async getRangeRecords(store, range) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            const day = now.getDate();
+            const pad = (v) => String(v).padStart(2, '0');
+
+            if (range === 'day') {
+                const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+                const record = await store.get(dateStr);
+                return record ? [record] : [];
+            }
+            if (range === 'month') {
+                const start = `${year}-${pad(month + 1)}-01`;
+                const end = `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}`;
+                return await store.getRange(start, end);
+            }
+            if (range === 'year') {
+                const start = `${year}-01-01`;
+                const end = `${year}-12-31`;
+                return await store.getRange(start, end);
+            }
+            return await store.getAll();
+        }
+
+        async getYearRecords(store, year) {
+            const start = `${year}-01-01`;
+            const end = `${year}-12-31`;
+            return await store.getRange(start, end);
+        }
+
+        aggregate(records) {
+            const summary = {};
+            STAT_FIELDS.forEach(field => {
+                summary[field] = 0;
+            });
+            records.forEach(record => {
+                STAT_FIELDS.forEach(field => {
+                    summary[field] += Number(record[field] || 0);
+                });
+            });
+            return summary;
+        }
+
+        renderSummaryCards(summary) {
+            const items = [
+                { label: '刷视频数', value: summary.videoCount || 0 },
+                { label: '刷视频时长', value: this.formatDuration(summary.watchTimeSec || 0) },
+                { label: '平均每条时长', value: this.formatDuration(this.getAverageWatchTime(summary)) },
+                { label: '跳过直播', value: summary.skipLiveCount || 0 },
+                { label: '跳过广告', value: summary.skipAdCount || 0 },
+                { label: '关键字屏蔽', value: summary.blockKeywordCount || 0 },
+                { label: 'AI点赞', value: summary.aiLikeCount || 0 },
+                { label: '极速跳过', value: summary.speedSkipCount || 0 }
+            ];
+
+            return items.map(item => `
+                <div style="background: rgba(255,255,255,0.06); padding: 10px; border-radius: 8px;">
+                    <div style="color: rgba(255,255,255,0.7); font-size: 12px; margin-bottom: 6px;">${item.label}</div>
+                    <div style="font-size: 16px; font-weight: 600;">${item.value}</div>
+                </div>
+            `).join('');
+        }
+
+        getAverageWatchTime(summary) {
+            const count = Number(summary.videoCount || 0);
+            const time = Number(summary.watchTimeSec || 0);
+            if (!Number.isFinite(count) || count <= 0) return 0;
+            if (!Number.isFinite(time) || time <= 0) return 0;
+            return Math.round(time / count);
+        }
+
+        renderHeatmap(container, records, year) {
+            const dataMap = new Map();
+            records.forEach(record => {
+                dataMap.set(record.date, Number(record.videoCount || 0));
+            });
+
+            const startDate = new Date(year, 0, 1);
+            const endDate = new Date(year, 11, 31);
+            const totalDays = Math.floor((endDate - startDate) / 86400000) + 1;
+            const startDay = startDate.getDay();
+            const totalCells = startDay + totalDays;
+            const weeks = Math.ceil(totalCells / 7);
+
+            let max = 0;
+            dataMap.forEach(value => {
+                if (value > max) max = value;
+            });
+            const colors = ['#1f1f1f', '#0e4429', '#006d32', '#26a641', '#39d353'];
+            const gap = 2;
+            const containerWidth = container.getBoundingClientRect().width || 0;
+            const labelColWidth = 32;
+            const availableWidth = Math.max(0, containerWidth - labelColWidth - 6);
+            const rawCell = weeks > 0 ? Math.floor((availableWidth - gap * (weeks - 1)) / weeks) : 10;
+            const cellSize = Math.min(12, Math.max(8, rawCell || 10));
+
+            const monthStarts = [];
+            for (let m = 0; m < 12; m++) {
+                const firstDay = new Date(year, m, 1);
+                const dayIndex = Math.floor((firstDay - startDate) / 86400000);
+                const cellIndex = dayIndex + startDay;
+                const weekIndex = Math.floor(cellIndex / 7);
+                monthStarts.push(weekIndex);
+            }
+
+            const monthLabels = [];
+            for (let m = 0; m < 12; m++) {
+                const start = monthStarts[m];
+                const end = m === 11 ? weeks : monthStarts[m + 1];
+                const span = Math.max(1, end - start);
+                monthLabels.push(`<div style="grid-column: ${start + 1} / span ${span}; font-size: 11px; color: rgba(255,255,255,0.6);">${m + 1}月</div>`);
+            }
+
+            const cells = [];
+            for (let w = 0; w < weeks; w++) {
+                for (let d = 0; d < 7; d++) {
+                    const cellIndex = w * 7 + d;
+                    const dayOffset = cellIndex - startDay;
+                    if (dayOffset < 0 || dayOffset >= totalDays) {
+                        cells.push('<div style="width: 100%; height: 100%; background: transparent;"></div>');
+                        continue;
+                    }
+                    const date = new Date(year, 0, 1 + dayOffset);
+                    const dateStr = `${year}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                    const value = dataMap.get(dateStr) || 0;
+                    const level = max === 0 ? 0 : Math.min(4, Math.floor((value / max) * 4));
+                    const title = `${dateStr} ${value}`;
+                    cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${colors[level]}; border-radius: 2px;"></div>`);
+                }
+            }
+
+            const weekdayText = ['周日', '', '周一', '', '周三', '', '周五'];
+            const weekdayLabels = weekdayText.map(text => `
+                <div style="font-size: 10px; color: rgba(255,255,255,0.55); display: flex; align-items: center; height: ${cellSize}px;">
+                    ${text}
+                </div>
+            `).join('');
+
+            container.innerHTML = `
+                <div style="display: flex; gap: 6px; align-items: stretch;">
+                    <div style="display: grid; grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; padding-top: 16px; width: ${labelColWidth}px;">
+                        ${weekdayLabels}
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); gap: ${gap}px; margin-bottom: 6px;">
+                            ${monthLabels.join('')}
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; width: 100%;">
+                            ${cells.join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        renderMonthlyBars(container, records, field, valueFormatter) {
+            const monthly = new Array(12).fill(0);
+            records.forEach(record => {
+                const month = Number((record.date || '').slice(5, 7)) - 1;
+                if (month >= 0 && month < 12) {
+                    monthly[month] += Number(record[field] || 0);
+                }
+            });
+            const max = Math.max(...monthly, 1);
+            container.innerHTML = monthly.map((value, index) => {
+                const height = Math.round((value / max) * 95) + 4;
+                const label = `${index + 1}月`;
+                return `
+                    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+                        <div style="height: ${height}px; width: 100%; background: rgba(254,44,85,0.7); border-radius: 4px 4px 0 0;"></div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.7);">${label}</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.8);">${valueFormatter(value)}</div>
+                    </div>
+                `;
+            }).join('');
         }
 
         showSpeedDialog() {
@@ -548,7 +1009,7 @@ export class UIFactory {
             const isZhipuCustomModel = !zhipuModels.some(m => m.value === currentZhipuModel);
 
             // Ollama 模型列表
-            const ollamaModels = ['qwen3-vl:8b', 'qwen2.5vl:7b'];
+            const ollamaModels = ['qwen3-vl:4b', 'qwen2.5vl:7b'];
             const isOllamaCustomModel = !ollamaModels.includes(currentOllamaModel);
 
             const selectStyle = `width: 100%; padding: 8px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; appearance: none; cursor: pointer;`;
@@ -579,7 +1040,7 @@ export class UIFactory {
                     <label style="${labelStyle}">Ollama 模型选择</label>
                     <div style="position: relative;">
                         <select class="ollama-model-select" style="${selectStyle}">
-                            <option value="qwen3-vl:8b" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentOllamaModel === 'qwen3-vl:8b' ? 'selected' : ''}>qwen3-vl:8b (推荐)</option>
+                            <option value="qwen3-vl:4b" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentOllamaModel === 'qwen3-vl:4b' ? 'selected' : ''}>qwen3-vl:4b (推荐)</option>
                             <option value="qwen2.5vl:7b" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentOllamaModel === 'qwen2.5vl:7b' ? 'selected' : ''}>qwen2.5vl:7b</option>
                             <option value="custom" style="background: rgba(0, 0, 0, 0.9); color: white;" ${isOllamaCustomModel ? 'selected' : ''}>自定义模型</option>
                         </select>

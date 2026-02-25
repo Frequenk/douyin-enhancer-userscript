@@ -2,10 +2,11 @@ import { SELECTORS } from './selectors.js';
 import { getBestVisibleElement } from '../utils/dom.js';
 
 export class VideoController {
-        constructor(notificationManager) {
+        constructor(notificationManager, statsTracker = null) {
             this.skipCheckInterval = null;
             this.skipAttemptCount = 0;
             this.notificationManager = notificationManager;
+            this.statsTracker = statsTracker;
         }
 
         skip(reason) {
@@ -25,6 +26,9 @@ export class VideoController {
 
         like() {
             this.notificationManager.showMessage('AI喜好: ❤️ 自动点赞');
+            if (this.statsTracker) {
+                this.statsTracker.inc('aiLikeCount', 1);
+            }
             this.sendKeyEvent('z', 'KeyZ', 90);
         }
 

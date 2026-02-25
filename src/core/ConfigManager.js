@@ -75,7 +75,7 @@ export class ConfigManager {
         }
 
         loadAiModel() {
-            return localStorage.getItem('douyin_ai_model') || 'qwen3-vl:8b';
+            return localStorage.getItem('douyin_ai_model') || 'qwen3-vl:4b';
         }
 
         loadZhipuApiKey() {

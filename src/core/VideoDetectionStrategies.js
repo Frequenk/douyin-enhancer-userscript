@@ -1,10 +1,11 @@
 import { SELECTORS } from './selectors.js';
 
 export class VideoDetectionStrategies {
-        constructor(config, videoController, notificationManager) {
+        constructor(config, videoController, notificationManager, statsTracker = null) {
             this.config = config;
             this.videoController = videoController;
             this.notificationManager = notificationManager;
+            this.statsTracker = statsTracker;
             this.resolutionSkipped = false;
         }
 
@@ -18,6 +19,9 @@ export class VideoDetectionStrategies {
             const adIndicator = container.querySelector(SELECTORS.adIndicator);
             if (adIndicator) {
                 this.videoController.skip('⏭️ 自动跳过: 广告视频');
+                if (this.statsTracker) {
+                    this.statsTracker.inc('skipAdCount', 1);
+                }
                 return true;
             }
             return false;
@@ -78,6 +82,9 @@ export class VideoDetectionStrategies {
 
             // 如果匹配到关键字，执行跳过操作
             if (matchedKeyword) {
+                if (this.statsTracker) {
+                    this.statsTracker.inc('blockKeywordCount', 1);
+                }
                 if (pressREnabled) {
                     // 如果开启了按R键功能，按R键（视频会直接消失）
                     this.videoController.pressR();

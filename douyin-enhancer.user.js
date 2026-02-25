@@ -6,9 +6,9 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 3.5
-// @changelog 新增智谱AI支持（免费在线视觉模型），无需本地部署，准确度相比Ollama开源模型有显著提升
-// @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式
+// @version 3.6
+// @changelog 架构调整：引入模块化结构与构建流程；新增统计面板与数据追踪（IndexedDB），工具栏胶囊展示“今[数量][时长]”，支持导入/导出与年度视图；默认本地模型改为 qwen3-vl:4b
+// @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
 // @run-at document-start
@@ -144,7 +144,7 @@
       return localStorage.getItem("douyin_ai_provider") || "ollama";
     }
     loadAiModel() {
-      return localStorage.getItem("douyin_ai_model") || "qwen3-vl:8b";
+      return localStorage.getItem("douyin_ai_model") || "qwen3-vl:4b";
     }
     loadZhipuApiKey() {
       return localStorage.getItem("douyin_zhipu_api_key") || "";
@@ -290,10 +290,11 @@
 
   // src/core/VideoController.js
   var VideoController = class {
-    constructor(notificationManager) {
+    constructor(notificationManager, statsTracker = null) {
       this.skipCheckInterval = null;
       this.skipAttemptCount = 0;
       this.notificationManager = notificationManager;
+      this.statsTracker = statsTracker;
     }
     skip(reason) {
       const tip = `\u8DF3\u8FC7\u89C6\u9891\uFF0C\u539F\u56E0\uFF1A${reason}`;
@@ -310,6 +311,9 @@
     }
     like() {
       this.notificationManager.showMessage("AI\u559C\u597D: \u2764\uFE0F \u81EA\u52A8\u70B9\u8D5E");
+      if (this.statsTracker) {
+        this.statsTracker.inc("aiLikeCount", 1);
+      }
       this.sendKeyEvent("z", "KeyZ", 90);
     }
     pressR() {
@@ -365,6 +369,212 @@
         console.log(attemptMessage);
         this.sendKeyEvent("ArrowDown");
       }, 500);
+    }
+  };
+
+  // src/stats/StatsStore.js
+  var StatsStore = class {
+    constructor(options = {}) {
+      this.dbName = options.dbName || "douyin-enhancer-stats";
+      this.storeName = options.storeName || "dailyStats";
+      this.version = options.version || 1;
+      this.db = null;
+    }
+    async open() {
+      if (this.db)
+        return this.db;
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(this.dbName, this.version);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(this.storeName)) {
+            db.createObjectStore(this.storeName, { keyPath: "date" });
+          }
+        };
+        request.onsuccess = () => {
+          this.db = request.result;
+          resolve(this.db);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async get(date) {
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly");
+        const store = tx.objectStore(this.storeName);
+        const request = store.get(date);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async put(record) {
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readwrite");
+        const store = tx.objectStore(this.storeName);
+        const request = store.put(record);
+        request.onsuccess = () => resolve(record);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async getAll() {
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly");
+        const store = tx.objectStore(this.storeName);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async getRange(startDate, endDate) {
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly");
+        const store = tx.objectStore(this.storeName);
+        const range = IDBKeyRange.bound(startDate, endDate);
+        const request = store.getAll(range);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async importAll(records) {
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readwrite");
+        const store = tx.objectStore(this.storeName);
+        for (const record of records) {
+          store.put(record);
+        }
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    }
+  };
+
+  // src/stats/StatsTracker.js
+  var STAT_FIELDS = [
+    "videoCount",
+    "watchTimeSec",
+    "skipLiveCount",
+    "skipAdCount",
+    "blockKeywordCount",
+    "aiLikeCount",
+    "speedSkipCount"
+  ];
+  var StatsTracker = class {
+    constructor(store = new StatsStore(), options = {}) {
+      this.store = store;
+      this.flushIntervalMs = options.flushIntervalMs || 2e3;
+      this.currentDate = null;
+      this.currentRecord = null;
+      this.flushTimer = null;
+      this.timeRemainder = 0;
+      this.updateHandlers = [];
+    }
+    async init() {
+      await this.store.open();
+      await this.ensureToday();
+    }
+    getStore() {
+      return this.store;
+    }
+    getCurrentDate() {
+      if (this.currentDate)
+        return this.currentDate;
+      return this.formatDate(/* @__PURE__ */ new Date());
+    }
+    onUpdate(handler) {
+      this.updateHandlers.push(handler);
+    }
+    emitUpdate() {
+      const snapshot = this.getSnapshot();
+      this.updateHandlers.forEach((handler) => handler(snapshot));
+    }
+    formatDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+    getEmptyRecord(dateStr) {
+      const record = { date: dateStr };
+      STAT_FIELDS.forEach((field) => {
+        record[field] = 0;
+      });
+      return record;
+    }
+    async ensureToday() {
+      const today = this.formatDate(/* @__PURE__ */ new Date());
+      await this.ensureDate(today);
+    }
+    async ensureDate(dateStr) {
+      if (this.currentDate === dateStr && this.currentRecord)
+        return;
+      const existing = await this.store.get(dateStr);
+      this.currentDate = dateStr;
+      this.currentRecord = existing || this.getEmptyRecord(dateStr);
+      this.timeRemainder = 0;
+      this.scheduleFlush(true);
+      this.emitUpdate();
+    }
+    async refreshCurrent() {
+      const dateStr = this.currentDate || this.formatDate(/* @__PURE__ */ new Date());
+      const existing = await this.store.get(dateStr);
+      this.currentDate = dateStr;
+      this.currentRecord = existing || this.getEmptyRecord(dateStr);
+      this.emitUpdate();
+    }
+    async maybeRollOver() {
+      const today = this.formatDate(/* @__PURE__ */ new Date());
+      if (this.currentDate !== today) {
+        await this.ensureDate(today);
+      }
+    }
+    inc(field, delta = 1) {
+      if (!this.currentRecord)
+        return;
+      if (!STAT_FIELDS.includes(field))
+        return;
+      const value = Number.isFinite(delta) ? delta : 0;
+      this.currentRecord[field] = (this.currentRecord[field] || 0) + value;
+      this.scheduleFlush();
+      this.emitUpdate();
+    }
+    addWatchTime(seconds) {
+      if (!this.currentRecord)
+        return;
+      if (!Number.isFinite(seconds) || seconds <= 0)
+        return;
+      this.timeRemainder += seconds;
+      const add = Math.floor(this.timeRemainder);
+      if (add > 0) {
+        this.timeRemainder -= add;
+        this.inc("watchTimeSec", add);
+      }
+    }
+    getSnapshot() {
+      if (this.currentRecord) {
+        return { ...this.currentRecord };
+      }
+      return this.getEmptyRecord(this.formatDate(/* @__PURE__ */ new Date()));
+    }
+    scheduleFlush(immediate = false) {
+      if (this.flushTimer)
+        return;
+      const delay = immediate ? 0 : this.flushIntervalMs;
+      this.flushTimer = setTimeout(() => {
+        this.flushTimer = null;
+        this.flush().catch(() => {
+        });
+      }, delay);
+    }
+    async flush() {
+      if (!this.currentRecord)
+        return;
+      await this.store.put(this.currentRecord);
     }
   };
 
@@ -443,6 +653,28 @@
           e.stopPropagation();
           onClick();
         });
+      }
+      return btnContainer;
+    }
+    static createInfoButton(html, className, onClick = null) {
+      const btnContainer = document.createElement("xg-icon");
+      btnContainer.className = `xgplayer-autoplay-setting ${className}`;
+      btnContainer.style.cursor = "pointer";
+      btnContainer.innerHTML = `
+                <div class="xgplayer-icon">
+                    <div class="xgplayer-setting-label">
+                        <span class="xgplayer-setting-title" style="cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+                            ${html}
+                        </span>
+                    </div>
+                </div>`;
+      if (onClick) {
+        const handler = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClick();
+        };
+        btnContainer.addEventListener("pointerdown", handler);
       }
       return btnContainer;
     }
@@ -650,14 +882,26 @@
     }
   };
   var UIManager2 = class {
-    constructor(config, videoController, notificationManager) {
+    constructor(config, videoController, notificationManager, statsTracker = null) {
       this.config = config;
       this.videoController = videoController;
       this.notificationManager = notificationManager;
+      this.statsTracker = statsTracker;
+      if (this.statsTracker) {
+        this.statsTracker.onUpdate(() => {
+          this.updateStatsSummaryText();
+        });
+      }
       this.initButtons();
     }
     initButtons() {
       this.buttonConfigs = [
+        {
+          type: "info",
+          text: this.getStatsLabel(),
+          className: "stats-summary-button",
+          onClick: () => this.showStatsDialog()
+        },
         {
           text: "\u8DF3\u76F4\u64AD",
           className: "skip-live-button",
@@ -705,38 +949,57 @@
         const parent = panel.parentNode;
         if (!parent)
           return;
-        let lastButton = panel;
+        const flexDirection = getComputedStyle(parent).flexDirection;
+        const isRowReverse = flexDirection === "row-reverse";
         this.buttonConfigs.forEach((config) => {
           let button = parent.querySelector(`.${config.className}`);
           if (!button) {
-            button = UIFactory.createToggleButton(
-              config.text,
-              config.className,
-              this.config.isEnabled(config.configKey),
-              (state) => {
-                this.config.setEnabled(config.configKey, state);
-                if (config.configKey === "skipLive") {
-                  this.notificationManager.showMessage(`\u529F\u80FD\u5F00\u5173: \u8DF3\u8FC7\u76F4\u64AD\u5DF2 ${state ? "\u2705" : "\u274C"}`);
-                } else if (config.configKey === "speedMode") {
-                  document.dispatchEvent(new CustomEvent("douyin-speed-mode-updated"));
-                }
-              },
-              config.onClick,
-              config.shortcut
-            );
-            parent.insertBefore(button, lastButton.nextSibling);
+            if (config.type === "info") {
+              button = UIFactory.createInfoButton(
+                config.text,
+                config.className,
+                config.onClick
+              );
+            } else {
+              button = UIFactory.createToggleButton(
+                config.text,
+                config.className,
+                this.config.isEnabled(config.configKey),
+                (state) => {
+                  this.config.setEnabled(config.configKey, state);
+                  if (config.configKey === "skipLive") {
+                    this.notificationManager.showMessage(`\u529F\u80FD\u5F00\u5173: \u8DF3\u8FC7\u76F4\u64AD\u5DF2 ${state ? "\u2705" : "\u274C"}`);
+                  } else if (config.configKey === "speedMode") {
+                    document.dispatchEvent(new CustomEvent("douyin-speed-mode-updated"));
+                  }
+                },
+                config.onClick,
+                config.shortcut
+              );
+            }
+            parent.insertBefore(button, panel);
           }
-          const isEnabled = this.config.isEnabled(config.configKey);
-          const switchEl = button.querySelector(".xg-switch");
-          if (switchEl) {
-            switchEl.classList.toggle("xg-switch-checked", isEnabled);
-            switchEl.setAttribute("aria-checked", String(isEnabled));
+          if (config.type === "info") {
+            button.style.order = isRowReverse ? "1" : "-1";
+          } else {
+            button.style.order = "0";
+          }
+          if (config.type !== "info") {
+            const isEnabled = this.config.isEnabled(config.configKey);
+            const switchEl = button.querySelector(".xg-switch");
+            if (switchEl) {
+              switchEl.classList.toggle("xg-switch-checked", isEnabled);
+              switchEl.setAttribute("aria-checked", String(isEnabled));
+            }
           }
           const titleEl = button.querySelector(".xgplayer-setting-title");
           if (titleEl && typeof config.text === "string") {
-            titleEl.textContent = config.text;
+            if (config.type === "info") {
+              titleEl.innerHTML = this.getStatsLabelHtml();
+            } else {
+              titleEl.textContent = config.text;
+            }
           }
-          lastButton = button;
         });
       });
     }
@@ -775,6 +1038,382 @@
       document.querySelectorAll(".resolution-filter-button .xgplayer-setting-title").forEach((el) => {
         el.textContent = `${resolution}\u7B5B\u9009`;
       });
+    }
+    updateStatsSummaryText() {
+      const html = this.getStatsLabelHtml();
+      document.querySelectorAll(".stats-summary-button .xgplayer-setting-title").forEach((el) => {
+        el.innerHTML = html;
+      });
+    }
+    getStatsLabel() {
+      if (!this.statsTracker)
+        return "\u4ECA0 00:00:00";
+      const snapshot = this.statsTracker.getSnapshot();
+      const count = snapshot.videoCount || 0;
+      const duration = this.formatDuration(snapshot.watchTimeSec || 0);
+      return `\u4ECA${count} ${duration}`;
+    }
+    getStatsLabelHtml() {
+      if (!this.statsTracker) {
+        return `
+                    <span class="stats-pill" style="background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.96); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.3); white-space: nowrap; line-height: 16px;">
+                        \u4ECA 0 00:00:00
+                    </span>
+                `;
+      }
+      const snapshot = this.statsTracker.getSnapshot();
+      const count = snapshot.videoCount || 0;
+      const duration = this.formatDuration(snapshot.watchTimeSec || 0);
+      return `
+                <span class="stats-pill" style="background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.96); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.3); white-space: nowrap; line-height: 16px;">
+                    \u4ECA ${count} ${duration}
+                </span>
+            `;
+    }
+    formatDuration(totalSeconds) {
+      const seconds = Math.max(0, Math.floor(totalSeconds || 0));
+      const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
+      const m = String(Math.floor(seconds % 3600 / 60)).padStart(2, "0");
+      const s = String(seconds % 60).padStart(2, "0");
+      return `${h}:${m}:${s}`;
+    }
+    async showStatsDialog() {
+      if (!this.statsTracker)
+        return;
+      if (this.statsDialogBusy)
+        return;
+      this.statsDialogBusy = true;
+      const existing = document.querySelector(".stats-dialog");
+      if (existing) {
+        existing.remove();
+        setTimeout(() => {
+          this.statsDialogBusy = false;
+        }, 120);
+        return;
+      }
+      const dialog = document.createElement("div");
+      dialog.className = "stats-dialog";
+      dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                z-index: 10002;
+                width: min(900px, 80vw);
+                max-height: 86vh;
+                overflow: auto;
+                padding: 20px;
+                color: white;
+                font-size: 13px;
+            `;
+      dialog.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="font-size: 16px; font-weight: 600;">\u7EDF\u8BA1\u9762\u677F</div>
+                    <button class="stats-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">\u5173\u95ED</button>
+                </div>
+
+                <div class="stats-summary-section" style="padding: 12px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <div style="font-weight: 600;">\u7EDF\u8BA1\u6982\u89C8</div>
+                        <div style="position: relative; display: inline-block; margin-left: auto;">
+                            <select class="stats-range-select" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; padding: 4px 22px 4px 8px; appearance: none;">
+                                <option value="day">\u672C\u65E5</option>
+                                <option value="month">\u672C\u6708</option>
+                                <option value="year">\u672C\u5E74</option>
+                                <option value="all">\u6240\u6709</option>
+                            </select>
+                            <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; color: rgba(255,255,255,0.7);">\u25BC</span>
+                        </div>
+                    </div>
+                    <div class="stats-summary-grid" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;"></div>
+                </div>
+
+                <div class="stats-year-section" style="padding: 12px; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                        <div style="font-weight: 700;">\u5E74\u5EA6\u89C6\u56FE</div>
+                        <div style="position: relative; display: inline-block; margin-left: auto;">
+                            <select class="stats-year-select" style="background: rgba(0,0,0,0.6); color: white; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; padding: 4px 22px 4px 8px; appearance: none;"></select>
+                            <span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none; color: rgba(255,255,255,0.7);">\u25BC</span>
+                        </div>
+                    </div>
+                    <div class="stats-heatmap-section" style="padding: 8px 6px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 12px;">
+                        <div style="font-weight: 600; margin-bottom: 6px;">\u5E74\u5EA6\u70ED\u529B\u56FE</div>
+                        <div class="stats-heatmap" style="display: flex; gap: 4px; align-items: flex-start; padding-bottom: 4px; width: 100%;"></div>
+                    </div>
+
+                    <div class="stats-chart-section" style="padding: 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; margin-bottom: 12px;">
+                        <div style="font-weight: 600; margin-bottom: 6px;">\u6BCF\u4E2A\u6708\u5237\u89C6\u9891\u6570\u91CF</div>
+                        <div class="stats-bar-video" style="height: 150px; display: flex; align-items: flex-end; gap: 6px; padding-top: 10px;"></div>
+                    </div>
+
+                    <div class="stats-chart-section" style="padding: 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                        <div style="font-weight: 600; margin-bottom: 6px;">\u6BCF\u4E2A\u6708\u5237\u89C6\u9891\u65F6\u95F4</div>
+                        <div class="stats-bar-time" style="height: 150px; display: flex; align-items: flex-end; gap: 6px; padding-top: 10px;"></div>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <div style="color: rgba(255,255,255,0.85); font-weight: 600;">\u6570\u636E\u5BFC\u5165/\u5BFC\u51FA</div>
+                    <div style="color: rgba(255,255,255,0.6); font-size: 11px;">\u5BFC\u5165\u540C\u65E5\u6570\u636E\u5C06\u8986\u76D6\u672C\u5730</div>
+                </div>
+                <div class="stats-actions" style="display: flex; gap: 10px;">
+                    <button class="stats-export-btn" style="flex: 1; padding: 8px 10px; background: #2d8cf0; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">\u5BFC\u51FA\u6570\u636E</button>
+                    <button class="stats-import-btn" style="flex: 1; padding: 8px 10px; background: #19be6b; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">\u5BFC\u5165\u6570\u636E</button>
+                </div>
+            `;
+      document.body.appendChild(dialog);
+      dialog.querySelector(".stats-close-btn").addEventListener("click", () => dialog.remove());
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog)
+          dialog.remove();
+      });
+      const rangeSelect = dialog.querySelector(".stats-range-select");
+      const yearSelect = dialog.querySelector(".stats-year-select");
+      const store = this.statsTracker.getStore();
+      const allRecords = await store.getAll();
+      const years = Array.from(new Set(allRecords.map((r) => Number((r.date || "").slice(0, 4))).filter(Boolean))).sort();
+      const currentYear = (/* @__PURE__ */ new Date()).getFullYear();
+      if (!years.includes(currentYear))
+        years.push(currentYear);
+      years.sort();
+      yearSelect.innerHTML = years.map((year) => `<option value="${year}" ${year === currentYear ? "selected" : ""}>${year}</option>`).join("");
+      const renderSummary = async () => {
+        const range = rangeSelect.value;
+        const records = await this.getRangeRecords(store, range);
+        const summary = this.aggregate(records);
+        const grid = dialog.querySelector(".stats-summary-grid");
+        grid.innerHTML = this.renderSummaryCards(summary);
+      };
+      const renderYearViews = async () => {
+        const year = Number(yearSelect.value);
+        const yearRecords = await this.getYearRecords(store, year);
+        this.renderHeatmap(dialog.querySelector(".stats-heatmap"), yearRecords, year);
+        this.renderMonthlyBars(dialog.querySelector(".stats-bar-video"), yearRecords, "videoCount", (value) => `${value}`);
+        this.renderMonthlyBars(dialog.querySelector(".stats-bar-time"), yearRecords, "watchTimeSec", (value) => this.formatDuration(value));
+      };
+      rangeSelect.addEventListener("change", renderSummary);
+      yearSelect.addEventListener("change", renderYearViews);
+      dialog.querySelector(".stats-export-btn").addEventListener("click", async () => {
+        const records = await store.getAll();
+        const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "douyin-stats.json";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      });
+      dialog.querySelector(".stats-import-btn").addEventListener("click", () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "application/json";
+        input.onchange = async () => {
+          if (!input.files || input.files.length === 0)
+            return;
+          const file = input.files[0];
+          const text = await file.text();
+          let records = [];
+          try {
+            records = JSON.parse(text);
+          } catch (err) {
+            alert("\u5BFC\u5165\u5931\u8D25\uFF1A\u6587\u4EF6\u683C\u5F0F\u4E0D\u6B63\u786E");
+            return;
+          }
+          const confirmed = confirm("\u5982\u6709\u91CD\u590D\u65E5\u671F\uFF0C\u5C06\u4EE5\u5BFC\u5165\u6570\u636E\u4E3A\u51C6\uFF0C\u8986\u76D6\u672C\u5730\u5B58\u91CF\u3002\u662F\u5426\u7EE7\u7EED\uFF1F");
+          if (!confirmed)
+            return;
+          const normalized = records.filter((item) => item && typeof item.date === "string").map((item) => this.normalizeRecord(item));
+          await store.importAll(normalized);
+          await this.statsTracker.refreshCurrent();
+          await renderSummary();
+          await renderYearViews();
+          this.notificationManager.showMessage("\u{1F4E5} \u6570\u636E\u5BFC\u5165\u5B8C\u6210");
+        };
+        input.click();
+      });
+      await renderSummary();
+      await renderYearViews();
+      setTimeout(() => {
+        this.statsDialogBusy = false;
+      }, 120);
+    }
+    normalizeRecord(record) {
+      const normalized = { date: record.date };
+      STAT_FIELDS.forEach((field) => {
+        const value = Number(record[field]);
+        normalized[field] = Number.isFinite(value) ? value : 0;
+      });
+      return normalized;
+    }
+    async getRangeRecords(store, range) {
+      const now = /* @__PURE__ */ new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const day = now.getDate();
+      const pad = (v) => String(v).padStart(2, "0");
+      if (range === "day") {
+        const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+        const record = await store.get(dateStr);
+        return record ? [record] : [];
+      }
+      if (range === "month") {
+        const start = `${year}-${pad(month + 1)}-01`;
+        const end = `${year}-${pad(month + 1)}-${pad(new Date(year, month + 1, 0).getDate())}`;
+        return await store.getRange(start, end);
+      }
+      if (range === "year") {
+        const start = `${year}-01-01`;
+        const end = `${year}-12-31`;
+        return await store.getRange(start, end);
+      }
+      return await store.getAll();
+    }
+    async getYearRecords(store, year) {
+      const start = `${year}-01-01`;
+      const end = `${year}-12-31`;
+      return await store.getRange(start, end);
+    }
+    aggregate(records) {
+      const summary = {};
+      STAT_FIELDS.forEach((field) => {
+        summary[field] = 0;
+      });
+      records.forEach((record) => {
+        STAT_FIELDS.forEach((field) => {
+          summary[field] += Number(record[field] || 0);
+        });
+      });
+      return summary;
+    }
+    renderSummaryCards(summary) {
+      const items = [
+        { label: "\u5237\u89C6\u9891\u6570", value: summary.videoCount || 0 },
+        { label: "\u5237\u89C6\u9891\u65F6\u957F", value: this.formatDuration(summary.watchTimeSec || 0) },
+        { label: "\u5E73\u5747\u6BCF\u6761\u65F6\u957F", value: this.formatDuration(this.getAverageWatchTime(summary)) },
+        { label: "\u8DF3\u8FC7\u76F4\u64AD", value: summary.skipLiveCount || 0 },
+        { label: "\u8DF3\u8FC7\u5E7F\u544A", value: summary.skipAdCount || 0 },
+        { label: "\u5173\u952E\u5B57\u5C4F\u853D", value: summary.blockKeywordCount || 0 },
+        { label: "AI\u70B9\u8D5E", value: summary.aiLikeCount || 0 },
+        { label: "\u6781\u901F\u8DF3\u8FC7", value: summary.speedSkipCount || 0 }
+      ];
+      return items.map((item) => `
+                <div style="background: rgba(255,255,255,0.06); padding: 10px; border-radius: 8px;">
+                    <div style="color: rgba(255,255,255,0.7); font-size: 12px; margin-bottom: 6px;">${item.label}</div>
+                    <div style="font-size: 16px; font-weight: 600;">${item.value}</div>
+                </div>
+            `).join("");
+    }
+    getAverageWatchTime(summary) {
+      const count = Number(summary.videoCount || 0);
+      const time = Number(summary.watchTimeSec || 0);
+      if (!Number.isFinite(count) || count <= 0)
+        return 0;
+      if (!Number.isFinite(time) || time <= 0)
+        return 0;
+      return Math.round(time / count);
+    }
+    renderHeatmap(container, records, year) {
+      const dataMap = /* @__PURE__ */ new Map();
+      records.forEach((record) => {
+        dataMap.set(record.date, Number(record.videoCount || 0));
+      });
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year, 11, 31);
+      const totalDays = Math.floor((endDate - startDate) / 864e5) + 1;
+      const startDay = startDate.getDay();
+      const totalCells = startDay + totalDays;
+      const weeks = Math.ceil(totalCells / 7);
+      let max = 0;
+      dataMap.forEach((value) => {
+        if (value > max)
+          max = value;
+      });
+      const colors = ["#1f1f1f", "#0e4429", "#006d32", "#26a641", "#39d353"];
+      const gap = 2;
+      const containerWidth = container.getBoundingClientRect().width || 0;
+      const labelColWidth = 32;
+      const availableWidth = Math.max(0, containerWidth - labelColWidth - 6);
+      const rawCell = weeks > 0 ? Math.floor((availableWidth - gap * (weeks - 1)) / weeks) : 10;
+      const cellSize = Math.min(12, Math.max(8, rawCell || 10));
+      const monthStarts = [];
+      for (let m = 0; m < 12; m++) {
+        const firstDay = new Date(year, m, 1);
+        const dayIndex = Math.floor((firstDay - startDate) / 864e5);
+        const cellIndex = dayIndex + startDay;
+        const weekIndex = Math.floor(cellIndex / 7);
+        monthStarts.push(weekIndex);
+      }
+      const monthLabels = [];
+      for (let m = 0; m < 12; m++) {
+        const start = monthStarts[m];
+        const end = m === 11 ? weeks : monthStarts[m + 1];
+        const span = Math.max(1, end - start);
+        monthLabels.push(`<div style="grid-column: ${start + 1} / span ${span}; font-size: 11px; color: rgba(255,255,255,0.6);">${m + 1}\u6708</div>`);
+      }
+      const cells = [];
+      for (let w = 0; w < weeks; w++) {
+        for (let d = 0; d < 7; d++) {
+          const cellIndex = w * 7 + d;
+          const dayOffset = cellIndex - startDay;
+          if (dayOffset < 0 || dayOffset >= totalDays) {
+            cells.push('<div style="width: 100%; height: 100%; background: transparent;"></div>');
+            continue;
+          }
+          const date = new Date(year, 0, 1 + dayOffset);
+          const dateStr = `${year}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+          const value = dataMap.get(dateStr) || 0;
+          const level = max === 0 ? 0 : Math.min(4, Math.floor(value / max * 4));
+          const title = `${dateStr} ${value}`;
+          cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${colors[level]}; border-radius: 2px;"></div>`);
+        }
+      }
+      const weekdayText = ["\u5468\u65E5", "", "\u5468\u4E00", "", "\u5468\u4E09", "", "\u5468\u4E94"];
+      const weekdayLabels = weekdayText.map((text) => `
+                <div style="font-size: 10px; color: rgba(255,255,255,0.55); display: flex; align-items: center; height: ${cellSize}px;">
+                    ${text}
+                </div>
+            `).join("");
+      container.innerHTML = `
+                <div style="display: flex; gap: 6px; align-items: stretch;">
+                    <div style="display: grid; grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; padding-top: 16px; width: ${labelColWidth}px;">
+                        ${weekdayLabels}
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); gap: ${gap}px; margin-bottom: 6px;">
+                            ${monthLabels.join("")}
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; width: 100%;">
+                            ${cells.join("")}
+                        </div>
+                    </div>
+                </div>
+            `;
+    }
+    renderMonthlyBars(container, records, field, valueFormatter) {
+      const monthly = new Array(12).fill(0);
+      records.forEach((record) => {
+        const month = Number((record.date || "").slice(5, 7)) - 1;
+        if (month >= 0 && month < 12) {
+          monthly[month] += Number(record[field] || 0);
+        }
+      });
+      const max = Math.max(...monthly, 1);
+      container.innerHTML = monthly.map((value, index) => {
+        const height = Math.round(value / max * 95) + 4;
+        const label = `${index + 1}\u6708`;
+        return `
+                    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+                        <div style="height: ${height}px; width: 100%; background: rgba(254,44,85,0.7); border-radius: 4px 4px 0 0;"></div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.7);">${label}</div>
+                        <div style="font-size: 11px; color: rgba(255,255,255,0.8);">${valueFormatter(value)}</div>
+                    </div>
+                `;
+      }).join("");
     }
     showSpeedDialog() {
       const speedConfig = this.config.get("speedMode");
@@ -866,7 +1505,7 @@
         { value: "glm-4.6v-flash", label: "GLM-4.6V-Flash (\u514D\u8D39)", desc: "\u89C6\u89C9\u63A8\u7406\uFF0C\u901F\u5EA6\u5FEB" }
       ];
       const isZhipuCustomModel = !zhipuModels.some((m) => m.value === currentZhipuModel);
-      const ollamaModels = ["qwen3-vl:8b", "qwen2.5vl:7b"];
+      const ollamaModels = ["qwen3-vl:4b", "qwen2.5vl:7b"];
       const isOllamaCustomModel = !ollamaModels.includes(currentOllamaModel);
       const selectStyle = `width: 100%; padding: 8px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; appearance: none; cursor: pointer;`;
       const inputStyle = `width: 100%; padding: 8px; background: rgba(255, 255, 255, 0.1); color: white; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px;`;
@@ -895,7 +1534,7 @@
                     <label style="${labelStyle}">Ollama \u6A21\u578B\u9009\u62E9</label>
                     <div style="position: relative;">
                         <select class="ollama-model-select" style="${selectStyle}">
-                            <option value="qwen3-vl:8b" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentOllamaModel === "qwen3-vl:8b" ? "selected" : ""}>qwen3-vl:8b (\u63A8\u8350)</option>
+                            <option value="qwen3-vl:4b" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentOllamaModel === "qwen3-vl:4b" ? "selected" : ""}>qwen3-vl:4b (\u63A8\u8350)</option>
                             <option value="qwen2.5vl:7b" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentOllamaModel === "qwen2.5vl:7b" ? "selected" : ""}>qwen2.5vl:7b</option>
                             <option value="custom" style="background: rgba(0, 0, 0, 0.9); color: white;" ${isOllamaCustomModel ? "selected" : ""}>\u81EA\u5B9A\u4E49\u6A21\u578B</option>
                         </select>
@@ -1401,10 +2040,11 @@
 
   // src/core/VideoDetectionStrategies.js
   var VideoDetectionStrategies = class {
-    constructor(config, videoController, notificationManager) {
+    constructor(config, videoController, notificationManager, statsTracker = null) {
       this.config = config;
       this.videoController = videoController;
       this.notificationManager = notificationManager;
+      this.statsTracker = statsTracker;
       this.resolutionSkipped = false;
     }
     reset() {
@@ -1416,6 +2056,9 @@
       const adIndicator = container.querySelector(SELECTORS.adIndicator);
       if (adIndicator) {
         this.videoController.skip("\u23ED\uFE0F \u81EA\u52A8\u8DF3\u8FC7: \u5E7F\u544A\u89C6\u9891");
+        if (this.statsTracker) {
+          this.statsTracker.inc("skipAdCount", 1);
+        }
         return true;
       }
       return false;
@@ -1466,6 +2109,9 @@
         }
       }
       if (matchedKeyword) {
+        if (this.statsTracker) {
+          this.statsTracker.inc("blockKeywordCount", 1);
+        }
         if (pressREnabled) {
           this.videoController.pressR();
         } else {
@@ -1528,10 +2174,12 @@
     constructor() {
       this.notificationManager = new NotificationManager();
       this.config = new ConfigManager();
-      this.videoController = new VideoController(this.notificationManager);
-      this.uiManager = new UIManager2(this.config, this.videoController, this.notificationManager);
+      this.statsStore = new StatsStore();
+      this.statsTracker = new StatsTracker(this.statsStore);
+      this.videoController = new VideoController(this.notificationManager, this.statsTracker);
+      this.uiManager = new UIManager2(this.config, this.videoController, this.notificationManager, this.statsTracker);
       this.aiDetector = new AIDetector(this.videoController, this.config);
-      this.strategies = new VideoDetectionStrategies(this.config, this.videoController, this.notificationManager);
+      this.strategies = new VideoDetectionStrategies(this.config, this.videoController, this.notificationManager, this.statsTracker);
       this.lastVideoUrl = "";
       this.videoStartTime = 0;
       this.speedModeSkipped = false;
@@ -1539,10 +2187,15 @@
       this.isCurrentlySkipping = false;
       this.currentSpeedDuration = null;
       this.currentSpeedMode = this.config.get("speedMode").mode;
+      this.lastTickTime = Date.now();
+      this.seenVideoUrls = /* @__PURE__ */ new Set();
       this.init();
     }
     init() {
       this.injectStyles();
+      this.statsTracker.init().catch((err) => {
+        console.error("\u7EDF\u8BA1\u6A21\u5757\u521D\u59CB\u5316\u5931\u8D25:", err);
+      });
       document.addEventListener("keydown", (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) {
           return;
@@ -1606,11 +2259,33 @@
                     min-height: 50px !important;
                 }
 
+                /* \u7EDF\u8BA1\u80F6\u56CA Hover \u63D0\u793A */
+                .stats-summary-button .stats-pill {
+                    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+                }
+                .stats-summary-button:hover .stats-pill {
+                    background: rgba(255, 255, 255, 0.22);
+                    border-color: rgba(255, 255, 255, 0.5);
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+                    transform: translateY(-1px);
+                }
+
+                /* \u9632\u6B62\u6807\u9898\u88AB\u56FE\u6807\u906E\u6321 */
+                .xgplayer-setting-label {
+                    align-items: center;
+                }
+                .xgplayer-setting-title {
+                    margin-left: 6px;
+                    white-space: nowrap;
+                }
+
 
             `;
       document.head.appendChild(style);
     }
     mainLoop() {
+      this.statsTracker.maybeRollOver().catch(() => {
+      });
       this.uiManager.insertButtons();
       const elementsWithText = Array.from(document.querySelectorAll("div,span")).filter((el) => el.textContent.includes("\u8FDB\u5165\u76F4\u64AD\u95F4"));
       const innermostElements = elementsWithText.filter((el) => {
@@ -1622,6 +2297,7 @@
         if (this.config.isEnabled("skipLive")) {
           if (!this.isCurrentlySkipping) {
             this.videoController.skip("\u23ED\uFE0F \u81EA\u52A8\u8DF3\u8FC7: \u76F4\u64AD\u95F4");
+            this.statsTracker.inc("skipLiveCount", 1);
             this.isCurrentlySkipping = true;
           }
         }
@@ -1637,6 +2313,7 @@
       if (!videoEl || !videoEl.src)
         return;
       const currentVideoUrl = videoEl.src;
+      this.trackWatchTime(videoEl);
       if (this.handleNewVideo(currentVideoUrl)) {
         return;
       }
@@ -1660,6 +2337,10 @@
         this.aiDetector.reset();
         this.strategies.reset();
         this.assignSpeedModeDuration(true);
+        if (currentVideoUrl && !this.seenVideoUrls.has(currentVideoUrl)) {
+          this.seenVideoUrls.add(currentVideoUrl);
+          this.statsTracker.inc("videoCount", 1);
+        }
         console.log("===== \u65B0\u89C6\u9891\u5F00\u59CB =====");
         return true;
       }
@@ -1688,9 +2369,23 @@
       if (playbackTime >= targetSeconds) {
         this.speedModeSkipped = true;
         this.videoController.skip(`\u26A1\uFE0F \u6781\u901F\u6A21\u5F0F: ${targetSeconds}\u79D2\u5DF2\u5230`);
+        this.statsTracker.inc("speedSkipCount", 1);
         return true;
       }
       return false;
+    }
+    trackWatchTime(videoEl) {
+      const now = Date.now();
+      const deltaMs = now - this.lastTickTime;
+      this.lastTickTime = now;
+      if (!Number.isFinite(deltaMs) || deltaMs <= 0 || deltaMs > 5e3) {
+        return;
+      }
+      if (document.visibilityState !== "visible")
+        return;
+      if (!videoEl || videoEl.paused)
+        return;
+      this.statsTracker.addWatchTime(deltaMs / 1e3);
     }
     handleAIDetection(videoEl) {
       if (!this.config.isEnabled("aiPreference"))

@@ -6,15 +6,19 @@ import { AIDetector } from '../ai/AIDetector.js';
 import { VideoDetectionStrategies } from '../core/VideoDetectionStrategies.js';
 import { isElementInViewport, getBestVisibleElement } from '../utils/dom.js';
 import { SELECTORS } from '../core/selectors.js';
+import { StatsStore } from '../stats/StatsStore.js';
+import { StatsTracker } from '../stats/StatsTracker.js';
 
 export class DouyinEnhancer {
         constructor() {
             this.notificationManager = new NotificationManager();
             this.config = new ConfigManager();
-            this.videoController = new VideoController(this.notificationManager);
-            this.uiManager = new UIManager(this.config, this.videoController, this.notificationManager);
+            this.statsStore = new StatsStore();
+            this.statsTracker = new StatsTracker(this.statsStore);
+            this.videoController = new VideoController(this.notificationManager, this.statsTracker);
+            this.uiManager = new UIManager(this.config, this.videoController, this.notificationManager, this.statsTracker);
             this.aiDetector = new AIDetector(this.videoController, this.config);
-            this.strategies = new VideoDetectionStrategies(this.config, this.videoController, this.notificationManager);
+            this.strategies = new VideoDetectionStrategies(this.config, this.videoController, this.notificationManager, this.statsTracker);
 
             this.lastVideoUrl = '';
             this.videoStartTime = 0;
@@ -23,12 +27,17 @@ export class DouyinEnhancer {
             this.isCurrentlySkipping = false;
             this.currentSpeedDuration = null;
             this.currentSpeedMode = this.config.get('speedMode').mode;
+            this.lastTickTime = Date.now();
+            this.seenVideoUrls = new Set();
 
             this.init();
         }
 
         init() {
             this.injectStyles();
+            this.statsTracker.init().catch((err) => {
+                console.error('统计模块初始化失败:', err);
+            });
 
             document.addEventListener('keydown', (e) => {
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
@@ -100,12 +109,33 @@ export class DouyinEnhancer {
                     min-height: 50px !important;
                 }
 
+                /* 统计胶囊 Hover 提示 */
+                .stats-summary-button .stats-pill {
+                    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+                }
+                .stats-summary-button:hover .stats-pill {
+                    background: rgba(255, 255, 255, 0.22);
+                    border-color: rgba(255, 255, 255, 0.5);
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+                    transform: translateY(-1px);
+                }
+
+                /* 防止标题被图标遮挡 */
+                .xgplayer-setting-label {
+                    align-items: center;
+                }
+                .xgplayer-setting-title {
+                    margin-left: 6px;
+                    white-space: nowrap;
+                }
+
 
             `;
             document.head.appendChild(style);
         }
 
         mainLoop() {
+            this.statsTracker.maybeRollOver().catch(() => {});
             this.uiManager.insertButtons();
 
             const elementsWithText = Array.from(document.querySelectorAll('div,span'))
@@ -119,6 +149,7 @@ export class DouyinEnhancer {
                 if (this.config.isEnabled('skipLive')) {
                     if (!this.isCurrentlySkipping) {
                         this.videoController.skip('⏭️ 自动跳过: 直播间');
+                        this.statsTracker.inc('skipLiveCount', 1);
                         this.isCurrentlySkipping = true;
                     }
                 }
@@ -135,6 +166,7 @@ export class DouyinEnhancer {
             if (!videoEl || !videoEl.src) return;
 
             const currentVideoUrl = videoEl.src;
+            this.trackWatchTime(videoEl);
 
             if (this.handleNewVideo(currentVideoUrl)) {
                 return;
@@ -161,6 +193,10 @@ export class DouyinEnhancer {
                 this.aiDetector.reset();
                 this.strategies.reset();
                 this.assignSpeedModeDuration(true);
+                if (currentVideoUrl && !this.seenVideoUrls.has(currentVideoUrl)) {
+                    this.seenVideoUrls.add(currentVideoUrl);
+                    this.statsTracker.inc('videoCount', 1);
+                }
                 console.log('===== 新视频开始 =====');
                 return true;
             }
@@ -193,9 +229,24 @@ export class DouyinEnhancer {
             if (playbackTime >= targetSeconds) {
                 this.speedModeSkipped = true;
                 this.videoController.skip(`⚡️ 极速模式: ${targetSeconds}秒已到`);
+                this.statsTracker.inc('speedSkipCount', 1);
                 return true;
             }
             return false;
+        }
+
+        trackWatchTime(videoEl) {
+            const now = Date.now();
+            const deltaMs = now - this.lastTickTime;
+            this.lastTickTime = now;
+
+            if (!Number.isFinite(deltaMs) || deltaMs <= 0 || deltaMs > 5000) {
+                return;
+            }
+            if (document.visibilityState !== 'visible') return;
+            if (!videoEl || videoEl.paused) return;
+
+            this.statsTracker.addWatchTime(deltaMs / 1000);
         }
 
         handleAIDetection(videoEl) {
