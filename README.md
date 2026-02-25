@@ -141,6 +141,16 @@ launchctl setenv OLLAMA_ORIGINS "*"
 
 欢迎提交 Issue 和 Pull Request！
 
+## 🧩 开发/构建
+
+本项目支持模块化开发，使用 `esbuild` 打包为单文件用户脚本。
+
+1. 安装依赖：`npm install`
+2. 构建输出：`npm run build`
+3. 监听构建：`npm run build:watch`
+
+开发源码位于 `src/`，构建产物为根目录的 `douyin-enhancer.user.js`。
+
 ## ⭐ 支持
 
 如果这个脚本对你有帮助，请：

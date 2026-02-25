@@ -1,0 +1,12 @@
+{
+  "name": "douyin-enhancer-userscript",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.2"
+  }
+}

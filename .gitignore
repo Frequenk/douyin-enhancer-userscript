@@ -9,3 +9,6 @@ Thumbs.db
 # 临时文件
 *.tmp
 *.log
+
+# Node
+node_modules/
