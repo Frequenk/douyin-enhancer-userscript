@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 3.6
-// @changelog 架构调整：引入模块化结构与构建流程；新增统计面板与数据追踪（IndexedDB），工具栏胶囊展示“今[数量][时长]”，支持导入/导出与年度视图；默认本地模型改为 qwen3-vl:4b
+// @version 3.7
+// @changelog 修复热力图最低档颜色与默认色一致的问题；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -1333,7 +1333,8 @@
         if (value > max)
           max = value;
       });
-      const colors = ["#1f1f1f", "#0e4429", "#006d32", "#26a641", "#39d353"];
+      const zeroColor = "#2a2a2a";
+      const colors = ["#dcfce7", "#4ade80", "#166534", "#052e16"];
       const gap = 2;
       const containerWidth = container.getBoundingClientRect().width || 0;
       const labelColWidth = 32;
@@ -1367,9 +1368,10 @@
           const date = new Date(year, 0, 1 + dayOffset);
           const dateStr = `${year}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
           const value = dataMap.get(dateStr) || 0;
-          const level = max === 0 ? 0 : Math.min(4, Math.floor(value / max * 4));
+          const level = max === 0 ? 0 : Math.min(3, Math.floor(value / max * 3));
           const title = `${dateStr} ${value}`;
-          cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${colors[level]}; border-radius: 2px;"></div>`);
+          const color = value === 0 ? zeroColor : colors[level];
+          cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${color}; border-radius: 2px;"></div>`);
         }
       }
       const weekdayText = ["\u5468\u65E5", "", "\u5468\u4E00", "", "\u5468\u4E09", "", "\u5468\u4E94"];

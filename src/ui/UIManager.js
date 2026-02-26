@@ -819,7 +819,8 @@ export class UIFactory {
             dataMap.forEach(value => {
                 if (value > max) max = value;
             });
-            const colors = ['#1f1f1f', '#0e4429', '#006d32', '#26a641', '#39d353'];
+            const zeroColor = '#2a2a2a';
+            const colors = ['#dcfce7', '#4ade80', '#166534', '#052e16'];
             const gap = 2;
             const containerWidth = container.getBoundingClientRect().width || 0;
             const labelColWidth = 32;
@@ -856,9 +857,10 @@ export class UIFactory {
                     const date = new Date(year, 0, 1 + dayOffset);
                     const dateStr = `${year}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                     const value = dataMap.get(dateStr) || 0;
-                    const level = max === 0 ? 0 : Math.min(4, Math.floor((value / max) * 4));
+                    const level = max === 0 ? 0 : Math.min(3, Math.floor((value / max) * 3));
                     const title = `${dateStr} ${value}`;
-                    cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${colors[level]}; border-radius: 2px;"></div>`);
+                    const color = value === 0 ? zeroColor : colors[level];
+                    cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${color}; border-radius: 2px;"></div>`);
                 }
             }
 
