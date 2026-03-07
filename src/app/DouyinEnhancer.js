@@ -120,6 +120,17 @@ export class DouyinEnhancer {
                     transform: translateY(-1px);
                 }
 
+                /* 默认设置按钮 Hover 提示 */
+                .default-states-button .default-state-pill {
+                    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+                }
+                .default-states-button:hover .default-state-pill {
+                    background: rgba(255, 255, 255, 0.16);
+                    border-color: rgba(255, 255, 255, 0.38);
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+                    transform: translateY(-1px);
+                }
+
                 /* 防止标题被图标遮挡 */
                 .xgplayer-setting-label {
                     align-items: center;
@@ -127,6 +138,39 @@ export class DouyinEnhancer {
                 .xgplayer-setting-title {
                     margin-left: 6px;
                     white-space: nowrap;
+                }
+
+                /* 自定义开关，避免被播放器原生 xg-switch 状态干扰 */
+                .dy-enhancer-switch {
+                    position: relative;
+                    width: 28px;
+                    min-width: 28px;
+                    height: 16px;
+                    padding: 0;
+                    border: none;
+                    border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.28);
+                    cursor: pointer;
+                    transition: background 0.18s ease, box-shadow 0.18s ease;
+                }
+                .dy-enhancer-switch:hover {
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+                }
+                .dy-enhancer-switch.is-checked {
+                    background: #fe2c55;
+                }
+                .dy-enhancer-switch-inner {
+                    position: absolute;
+                    top: 2px;
+                    left: 2px;
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: #ffffff;
+                    transition: transform 0.18s ease;
+                }
+                .dy-enhancer-switch.is-checked .dy-enhancer-switch-inner {
+                    transform: translateX(12px);
                 }
 
 

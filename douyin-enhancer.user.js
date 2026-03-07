@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 3.7
-// @changelog 修复热力图最低档颜色与默认色一致的问题；
+// @version 3.8
+// @changelog 新增默认设置；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -78,11 +78,12 @@
   // src/core/ConfigManager.js
   var ConfigManager = class {
     constructor() {
+      this.defaultEnabledStates = this.loadDefaultEnabledStates();
       this.config = {
-        skipLive: { enabled: true, key: "skipLive" },
-        autoHighRes: { enabled: true, key: "autoHighRes" },
+        skipLive: { enabled: this.getDefaultEnabledState("skipLive"), key: "skipLive" },
+        autoHighRes: { enabled: this.getDefaultEnabledState("autoHighRes"), key: "autoHighRes" },
         blockKeywords: {
-          enabled: true,
+          enabled: this.getDefaultEnabledState("blockKeywords"),
           key: "blockKeywords",
           keywords: this.loadKeywords(),
           pressR: this.loadPressRSetting(),
@@ -90,14 +91,14 @@
           blockDesc: this.loadBlockDescSetting(),
           blockTags: this.loadBlockTagsSetting()
         },
-        skipAd: { enabled: true, key: "skipAd" },
+        skipAd: { enabled: this.getDefaultEnabledState("skipAd"), key: "skipAd" },
         onlyResolution: {
-          enabled: false,
+          enabled: this.getDefaultEnabledState("onlyResolution"),
           key: "onlyResolution",
           resolution: this.loadTargetResolution()
         },
         aiPreference: {
-          enabled: false,
+          enabled: this.getDefaultEnabledState("aiPreference"),
           key: "aiPreference",
           content: this.loadAiContent(),
           provider: this.loadAiProvider(),
@@ -109,7 +110,7 @@
           autoLike: this.loadAutoLikeSetting()
         },
         speedMode: {
-          enabled: false,
+          enabled: this.getDefaultEnabledState("speedMode"),
           key: "speedMode",
           seconds: this.loadSpeedSeconds(),
           mode: this.loadSpeedModeType(),
@@ -117,6 +118,34 @@
           maxSeconds: this.loadSpeedMaxSeconds()
         }
       };
+    }
+    loadDefaultEnabledStates() {
+      const fallback = {
+        skipLive: true,
+        skipAd: true,
+        blockKeywords: true,
+        autoHighRes: true,
+        onlyResolution: false,
+        aiPreference: false,
+        speedMode: false
+      };
+      let savedStates = {};
+      try {
+        savedStates = JSON.parse(localStorage.getItem("douyin_default_toggle_states") || "{}");
+      } catch (error) {
+        savedStates = {};
+      }
+      return Object.keys(fallback).reduce((states, key) => {
+        states[key] = typeof savedStates[key] === "boolean" ? savedStates[key] : fallback[key];
+        return states;
+      }, {});
+    }
+    getDefaultEnabledState(key) {
+      var _a;
+      return (_a = this.defaultEnabledStates[key]) != null ? _a : false;
+    }
+    getDefaultEnabledStates() {
+      return { ...this.defaultEnabledStates };
     }
     loadKeywords() {
       return JSON.parse(localStorage.getItem("douyin_blocked_keywords") || '["\u5E97", "\u7504\u9009"]');
@@ -231,6 +260,21 @@
     saveBlockTagsSetting(enabled) {
       this.config.blockKeywords.blockTags = enabled;
       localStorage.setItem("douyin_block_tags_enabled", enabled.toString());
+    }
+    saveDefaultEnabledState(key, enabled) {
+      if (!(key in this.defaultEnabledStates)) {
+        return;
+      }
+      this.defaultEnabledStates[key] = Boolean(enabled);
+      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultEnabledStates));
+    }
+    saveDefaultEnabledStates(states) {
+      Object.keys(this.defaultEnabledStates).forEach((key) => {
+        if (typeof states[key] === "boolean") {
+          this.defaultEnabledStates[key] = states[key];
+        }
+      });
+      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultEnabledStates));
     }
     get(key) {
       return this.config[key];
@@ -637,13 +681,15 @@
       btnContainer.innerHTML = `
                 <div class="xgplayer-icon">
                     <div class="xgplayer-setting-label">
-                        <button aria-checked="${isEnabled}" class="xg-switch ${isEnabled ? "xg-switch-checked" : ""}">
-                            <span class="xg-switch-inner"></span>
+                        <button type="button" aria-checked="${isEnabled}" class="dy-enhancer-switch ${isEnabled ? "is-checked" : ""}">
+                            <span class="dy-enhancer-switch-inner"></span>
                         </button>
                         <span class="xgplayer-setting-title" style="${onClick ? "cursor: pointer; text-decoration: underline;" : ""}">${text}</span>
                     </div>
                 </div>${shortcutHint}`;
       btnContainer.querySelector("button").addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const newState = e.currentTarget.getAttribute("aria-checked") === "false";
         UIManager2.updateToggleButtons(className, newState);
         onToggle(newState);
@@ -898,7 +944,13 @@
       this.buttonConfigs = [
         {
           type: "info",
-          text: this.getStatsLabel(),
+          getHtml: () => this.getDefaultStateButtonHtml(),
+          className: "default-states-button",
+          onClick: () => this.showDefaultStatesDialog()
+        },
+        {
+          type: "info",
+          getHtml: () => this.getStatsLabelHtml(),
           className: "stats-summary-button",
           onClick: () => this.showStatsDialog()
         },
@@ -945,8 +997,16 @@
       ];
     }
     insertButtons() {
-      document.querySelectorAll(SELECTORS.settingsPanel).forEach((panel) => {
+      const parentEntries = Array.from(
+        document.querySelectorAll(SELECTORS.settingsPanel)
+      ).reduce((entries, panel) => {
         const parent = panel.parentNode;
+        if (parent && !entries.some((entry) => entry.parent === parent)) {
+          entries.push({ parent, anchor: panel });
+        }
+        return entries;
+      }, []);
+      parentEntries.forEach(({ parent, anchor }) => {
         if (!parent)
           return;
         const flexDirection = getComputedStyle(parent).flexDirection;
@@ -956,7 +1016,7 @@
           if (!button) {
             if (config.type === "info") {
               button = UIFactory.createInfoButton(
-                config.text,
+                typeof config.getHtml === "function" ? config.getHtml() : config.text,
                 config.className,
                 config.onClick
               );
@@ -977,7 +1037,7 @@
                 config.shortcut
               );
             }
-            parent.insertBefore(button, panel);
+            parent.insertBefore(button, anchor);
           }
           if (config.type === "info") {
             button.style.order = isRowReverse ? "1" : "-1";
@@ -986,17 +1046,20 @@
           }
           if (config.type !== "info") {
             const isEnabled = this.config.isEnabled(config.configKey);
-            const switchEl = button.querySelector(".xg-switch");
-            if (switchEl) {
-              switchEl.classList.toggle("xg-switch-checked", isEnabled);
+            const switchEl = button.querySelector(".dy-enhancer-switch");
+            if (switchEl && switchEl.getAttribute("aria-checked") !== String(isEnabled)) {
+              switchEl.classList.toggle("is-checked", isEnabled);
               switchEl.setAttribute("aria-checked", String(isEnabled));
             }
           }
           const titleEl = button.querySelector(".xgplayer-setting-title");
-          if (titleEl && typeof config.text === "string") {
-            if (config.type === "info") {
-              titleEl.innerHTML = this.getStatsLabelHtml();
-            } else {
+          if (titleEl && config.type === "info") {
+            const html = typeof config.getHtml === "function" ? config.getHtml() : config.text;
+            if (titleEl.innerHTML !== html) {
+              titleEl.innerHTML = html;
+            }
+          } else if (titleEl && typeof config.text === "string") {
+            if (titleEl.textContent !== config.text) {
               titleEl.textContent = config.text;
             }
           }
@@ -1004,8 +1067,8 @@
       });
     }
     static updateToggleButtons(className, isEnabled) {
-      document.querySelectorAll(`.${className} .xg-switch`).forEach((sw) => {
-        sw.classList.toggle("xg-switch-checked", isEnabled);
+      document.querySelectorAll(`.${className} .dy-enhancer-switch`).forEach((sw) => {
+        sw.classList.toggle("is-checked", isEnabled);
         sw.setAttribute("aria-checked", String(isEnabled));
       });
     }
@@ -1070,12 +1133,107 @@
                 </span>
             `;
     }
+    getDefaultStateButtonHtml() {
+      return `
+                <span class="default-state-pill" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.92); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.22); white-space: nowrap; line-height: 16px;">
+                    \u9ED8\u8BA4\u8BBE\u7F6E
+                </span>
+            `;
+    }
+    getDefaultStateItems() {
+      return this.buttonConfigs.filter((config) => config.configKey).map((config) => ({
+        key: config.configKey,
+        label: config.text
+      }));
+    }
     formatDuration(totalSeconds) {
       const seconds = Math.max(0, Math.floor(totalSeconds || 0));
       const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
       const m = String(Math.floor(seconds % 3600 / 60)).padStart(2, "0");
       const s = String(seconds % 60).padStart(2, "0");
       return `${h}:${m}:${s}`;
+    }
+    showDefaultStatesDialog() {
+      if (this.defaultStatesDialogBusy)
+        return;
+      this.defaultStatesDialogBusy = true;
+      const existing = document.querySelector(".default-states-dialog");
+      if (existing) {
+        existing.remove();
+        setTimeout(() => {
+          this.defaultStatesDialogBusy = false;
+        }, 120);
+        return;
+      }
+      const defaultStates = this.config.getDefaultEnabledStates();
+      const toggleItems = this.getDefaultStateItems();
+      const dialog = document.createElement("div");
+      dialog.className = "default-states-dialog";
+      dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                z-index: 10002;
+                width: min(420px, 80vw);
+                max-height: 82vh;
+                overflow: auto;
+                padding: 18px;
+                color: white;
+                font-size: 13px;
+            `;
+      dialog.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="font-size: 16px; font-weight: 600;">\u9ED8\u8BA4\u8BBE\u7F6E</div>
+                    <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">\u5173\u95ED</button>
+                </div>
+                <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+                    \u8FD9\u91CC\u914D\u7F6E\u7684\u662F\u6BCF\u6B21\u6253\u5F00\u5E76\u8FDB\u5165\u6296\u97F3\u65F6\uFF0C\u5E95\u90E8\u680F\u5404\u4E2A\u529F\u80FD\u5F00\u5173\u7684\u521D\u59CB\u72B6\u6001\u3002\u4FDD\u5B58\u540E\u4E0D\u4F1A\u7ACB\u5373\u4FEE\u6539\u4F60\u5F53\u524D\u8FD9\u6B21\u4F1A\u8BDD\u91CC\u7684\u5F00\u5173\uFF0C\u4E0B\u6B21\u8FDB\u5165\u9875\u9762\u65F6\u624D\u4F1A\u6309\u8FD9\u91CC\u7684\u9ED8\u8BA4\u503C\u542F\u52A8\u3002
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
+                    ${toggleItems.map((item) => `
+                        <label style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
+                            <span style="color: white; font-size: 13px;">${item.label}</span>
+                            <span style="display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.72); font-size: 12px;">
+                                <span class="default-state-status">${defaultStates[item.key] ? "\u9ED8\u8BA4\u5F00" : "\u9ED8\u8BA4\u5173"}</span>
+                                <input type="checkbox" data-default-key="${item.key}" ${defaultStates[item.key] ? "checked" : ""} style="width: 16px; height: 16px; accent-color: #fe2c55; cursor: pointer;">
+                            </span>
+                        </label>
+                    `).join("")}
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="default-states-save-btn" style="flex: 1; padding: 8px 10px; background: #fe2c55; color: white; border: none; border-radius: 6px; cursor: pointer;">\u4FDD\u5B58</button>
+                    <button class="default-states-cancel-btn" style="flex: 1; padding: 8px 10px; background: rgba(255,255,255,0.08); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer;">\u53D6\u6D88</button>
+                </div>
+            `;
+      document.body.appendChild(dialog);
+      const closeDialog = () => dialog.remove();
+      dialog.querySelector(".default-states-close-btn").addEventListener("click", closeDialog);
+      dialog.querySelector(".default-states-cancel-btn").addEventListener("click", closeDialog);
+      dialog.querySelector(".default-states-save-btn").addEventListener("click", () => {
+        const nextStates = {};
+        dialog.querySelectorAll("[data-default-key]").forEach((input) => {
+          nextStates[input.dataset.defaultKey] = input.checked;
+        });
+        this.config.saveDefaultEnabledStates(nextStates);
+        this.notificationManager.showMessage("\u9ED8\u8BA4\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF0C\u4E0B\u6B21\u8FDB\u5165\u6296\u97F3\u65F6\u751F\u6548");
+        closeDialog();
+      });
+      dialog.querySelectorAll("[data-default-key]").forEach((input) => {
+        input.addEventListener("change", () => {
+          var _a;
+          const label = (_a = input.closest("label")) == null ? void 0 : _a.querySelector(".default-state-status");
+          if (label) {
+            label.textContent = input.checked ? "\u9ED8\u8BA4\u5F00" : "\u9ED8\u8BA4\u5173";
+          }
+        });
+      });
+      setTimeout(() => {
+        this.defaultStatesDialogBusy = false;
+      }, 120);
     }
     async showStatsDialog() {
       if (!this.statsTracker)
@@ -2272,6 +2430,17 @@
                     transform: translateY(-1px);
                 }
 
+                /* \u9ED8\u8BA4\u8BBE\u7F6E\u6309\u94AE Hover \u63D0\u793A */
+                .default-states-button .default-state-pill {
+                    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+                }
+                .default-states-button:hover .default-state-pill {
+                    background: rgba(255, 255, 255, 0.16);
+                    border-color: rgba(255, 255, 255, 0.38);
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+                    transform: translateY(-1px);
+                }
+
                 /* \u9632\u6B62\u6807\u9898\u88AB\u56FE\u6807\u906E\u6321 */
                 .xgplayer-setting-label {
                     align-items: center;
@@ -2279,6 +2448,39 @@
                 .xgplayer-setting-title {
                     margin-left: 6px;
                     white-space: nowrap;
+                }
+
+                /* \u81EA\u5B9A\u4E49\u5F00\u5173\uFF0C\u907F\u514D\u88AB\u64AD\u653E\u5668\u539F\u751F xg-switch \u72B6\u6001\u5E72\u6270 */
+                .dy-enhancer-switch {
+                    position: relative;
+                    width: 28px;
+                    min-width: 28px;
+                    height: 16px;
+                    padding: 0;
+                    border: none;
+                    border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.28);
+                    cursor: pointer;
+                    transition: background 0.18s ease, box-shadow 0.18s ease;
+                }
+                .dy-enhancer-switch:hover {
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+                }
+                .dy-enhancer-switch.is-checked {
+                    background: #fe2c55;
+                }
+                .dy-enhancer-switch-inner {
+                    position: absolute;
+                    top: 2px;
+                    left: 2px;
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    background: #ffffff;
+                    transition: transform 0.18s ease;
+                }
+                .dy-enhancer-switch.is-checked .dy-enhancer-switch-inner {
+                    transform: translateX(12px);
                 }
 
 

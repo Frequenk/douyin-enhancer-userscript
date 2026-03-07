@@ -69,14 +69,16 @@ export class UIFactory {
             btnContainer.innerHTML = `
                 <div class="xgplayer-icon">
                     <div class="xgplayer-setting-label">
-                        <button aria-checked="${isEnabled}" class="xg-switch ${isEnabled ? 'xg-switch-checked' : ''}">
-                            <span class="xg-switch-inner"></span>
+                        <button type="button" aria-checked="${isEnabled}" class="dy-enhancer-switch ${isEnabled ? 'is-checked' : ''}">
+                            <span class="dy-enhancer-switch-inner"></span>
                         </button>
                         <span class="xgplayer-setting-title" style="${onClick ? 'cursor: pointer; text-decoration: underline;' : ''}">${text}</span>
                     </div>
                 </div>${shortcutHint}`;
 
             btnContainer.querySelector('button').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const newState = e.currentTarget.getAttribute('aria-checked') === 'false';
                 UIManager.updateToggleButtons(className, newState);
                 onToggle(newState);
@@ -360,7 +362,13 @@ export class UIFactory {
             this.buttonConfigs = [
                 {
                     type: 'info',
-                    text: this.getStatsLabel(),
+                    getHtml: () => this.getDefaultStateButtonHtml(),
+                    className: 'default-states-button',
+                    onClick: () => this.showDefaultStatesDialog()
+                },
+                {
+                    type: 'info',
+                    getHtml: () => this.getStatsLabelHtml(),
                     className: 'stats-summary-button',
                     onClick: () => this.showStatsDialog()
                 },
@@ -408,8 +416,17 @@ export class UIFactory {
         }
 
         insertButtons() {
-            document.querySelectorAll(SELECTORS.settingsPanel).forEach(panel => {
+            const parentEntries = Array.from(
+                document.querySelectorAll(SELECTORS.settingsPanel)
+            ).reduce((entries, panel) => {
                 const parent = panel.parentNode;
+                if (parent && !entries.some(entry => entry.parent === parent)) {
+                    entries.push({ parent, anchor: panel });
+                }
+                return entries;
+            }, []);
+
+            parentEntries.forEach(({ parent, anchor }) => {
                 if (!parent) return;
                 const flexDirection = getComputedStyle(parent).flexDirection;
                 const isRowReverse = flexDirection === 'row-reverse';
@@ -419,7 +436,7 @@ export class UIFactory {
                     if (!button) {
                         if (config.type === 'info') {
                             button = UIFactory.createInfoButton(
-                                config.text,
+                                typeof config.getHtml === 'function' ? config.getHtml() : config.text,
                                 config.className,
                                 config.onClick
                             );
@@ -440,7 +457,7 @@ export class UIFactory {
                                 config.shortcut
                             );
                         }
-                        parent.insertBefore(button, panel);
+                        parent.insertBefore(button, anchor);
                     }
                     if (config.type === 'info') {
                         button.style.order = isRowReverse ? '1' : '-1';
@@ -449,17 +466,20 @@ export class UIFactory {
                     }
                     if (config.type !== 'info') {
                         const isEnabled = this.config.isEnabled(config.configKey);
-                        const switchEl = button.querySelector('.xg-switch');
-                        if (switchEl) {
-                            switchEl.classList.toggle('xg-switch-checked', isEnabled);
+                        const switchEl = button.querySelector('.dy-enhancer-switch');
+                        if (switchEl && switchEl.getAttribute('aria-checked') !== String(isEnabled)) {
+                            switchEl.classList.toggle('is-checked', isEnabled);
                             switchEl.setAttribute('aria-checked', String(isEnabled));
                         }
                     }
                     const titleEl = button.querySelector('.xgplayer-setting-title');
-                    if (titleEl && typeof config.text === 'string') {
-                        if (config.type === 'info') {
-                            titleEl.innerHTML = this.getStatsLabelHtml();
-                        } else {
+                    if (titleEl && config.type === 'info') {
+                        const html = typeof config.getHtml === 'function' ? config.getHtml() : config.text;
+                        if (titleEl.innerHTML !== html) {
+                            titleEl.innerHTML = html;
+                        }
+                    } else if (titleEl && typeof config.text === 'string') {
+                        if (titleEl.textContent !== config.text) {
                             titleEl.textContent = config.text;
                         }
                     }
@@ -468,8 +488,8 @@ export class UIFactory {
         }
 
         static updateToggleButtons(className, isEnabled) {
-            document.querySelectorAll(`.${className} .xg-switch`).forEach(sw => {
-                sw.classList.toggle('xg-switch-checked', isEnabled);
+            document.querySelectorAll(`.${className} .dy-enhancer-switch`).forEach(sw => {
+                sw.classList.toggle('is-checked', isEnabled);
                 sw.setAttribute('aria-checked', String(isEnabled));
             });
         }
@@ -538,12 +558,117 @@ export class UIFactory {
             `;
         }
 
+        getDefaultStateButtonHtml() {
+            return `
+                <span class="default-state-pill" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.92); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.22); white-space: nowrap; line-height: 16px;">
+                    默认设置
+                </span>
+            `;
+        }
+
+        getDefaultStateItems() {
+            return this.buttonConfigs
+                .filter(config => config.configKey)
+                .map(config => ({
+                    key: config.configKey,
+                    label: config.text
+                }));
+        }
+
         formatDuration(totalSeconds) {
             const seconds = Math.max(0, Math.floor(totalSeconds || 0));
             const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
             const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
             const s = String(seconds % 60).padStart(2, '0');
             return `${h}:${m}:${s}`;
+        }
+
+        showDefaultStatesDialog() {
+            if (this.defaultStatesDialogBusy) return;
+            this.defaultStatesDialogBusy = true;
+            const existing = document.querySelector('.default-states-dialog');
+            if (existing) {
+                existing.remove();
+                setTimeout(() => {
+                    this.defaultStatesDialogBusy = false;
+                }, 120);
+                return;
+            }
+
+            const defaultStates = this.config.getDefaultEnabledStates();
+            const toggleItems = this.getDefaultStateItems();
+            const dialog = document.createElement('div');
+            dialog.className = 'default-states-dialog';
+            dialog.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(0, 0, 0, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                z-index: 10002;
+                width: min(420px, 80vw);
+                max-height: 82vh;
+                overflow: auto;
+                padding: 18px;
+                color: white;
+                font-size: 13px;
+            `;
+
+            dialog.innerHTML = `
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="font-size: 16px; font-weight: 600;">默认设置</div>
+                    <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">关闭</button>
+                </div>
+                <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+                    这里配置的是每次打开并进入抖音时，底部栏各个功能开关的初始状态。保存后不会立即修改你当前这次会话里的开关，下次进入页面时才会按这里的默认值启动。
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
+                    ${toggleItems.map(item => `
+                        <label style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
+                            <span style="color: white; font-size: 13px;">${item.label}</span>
+                            <span style="display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.72); font-size: 12px;">
+                                <span class="default-state-status">${defaultStates[item.key] ? '默认开' : '默认关'}</span>
+                                <input type="checkbox" data-default-key="${item.key}" ${defaultStates[item.key] ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #fe2c55; cursor: pointer;">
+                            </span>
+                        </label>
+                    `).join('')}
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="default-states-save-btn" style="flex: 1; padding: 8px 10px; background: #fe2c55; color: white; border: none; border-radius: 6px; cursor: pointer;">保存</button>
+                    <button class="default-states-cancel-btn" style="flex: 1; padding: 8px 10px; background: rgba(255,255,255,0.08); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer;">取消</button>
+                </div>
+            `;
+
+            document.body.appendChild(dialog);
+
+            const closeDialog = () => dialog.remove();
+
+            dialog.querySelector('.default-states-close-btn').addEventListener('click', closeDialog);
+            dialog.querySelector('.default-states-cancel-btn').addEventListener('click', closeDialog);
+            dialog.querySelector('.default-states-save-btn').addEventListener('click', () => {
+                const nextStates = {};
+                dialog.querySelectorAll('[data-default-key]').forEach(input => {
+                    nextStates[input.dataset.defaultKey] = input.checked;
+                });
+                this.config.saveDefaultEnabledStates(nextStates);
+                this.notificationManager.showMessage('默认设置已保存，下次进入抖音时生效');
+                closeDialog();
+            });
+
+            dialog.querySelectorAll('[data-default-key]').forEach(input => {
+                input.addEventListener('change', () => {
+                    const label = input.closest('label')?.querySelector('.default-state-status');
+                    if (label) {
+                        label.textContent = input.checked ? '默认开' : '默认关';
+                    }
+                });
+            });
+
+            setTimeout(() => {
+                this.defaultStatesDialogBusy = false;
+            }, 120);
         }
 
         async showStatsDialog() {

@@ -1,10 +1,11 @@
 export class ConfigManager {
         constructor() {
+            this.defaultEnabledStates = this.loadDefaultEnabledStates();
             this.config = {
-                skipLive: { enabled: true, key: 'skipLive' },
-                autoHighRes: { enabled: true, key: 'autoHighRes' },
+                skipLive: { enabled: this.getDefaultEnabledState('skipLive'), key: 'skipLive' },
+                autoHighRes: { enabled: this.getDefaultEnabledState('autoHighRes'), key: 'autoHighRes' },
                 blockKeywords: {
-                    enabled: true,
+                    enabled: this.getDefaultEnabledState('blockKeywords'),
                     key: 'blockKeywords',
                     keywords: this.loadKeywords(),
                     pressR: this.loadPressRSetting(),
@@ -12,14 +13,14 @@ export class ConfigManager {
                     blockDesc: this.loadBlockDescSetting(),
                     blockTags: this.loadBlockTagsSetting()
                 },
-                skipAd: { enabled: true, key: 'skipAd' },
+                skipAd: { enabled: this.getDefaultEnabledState('skipAd'), key: 'skipAd' },
                 onlyResolution: {
-                    enabled: false,
+                    enabled: this.getDefaultEnabledState('onlyResolution'),
                     key: 'onlyResolution',
                     resolution: this.loadTargetResolution()
                 },
                 aiPreference: {
-                    enabled: false,
+                    enabled: this.getDefaultEnabledState('aiPreference'),
                     key: 'aiPreference',
                     content: this.loadAiContent(),
                     provider: this.loadAiProvider(),
@@ -31,7 +32,7 @@ export class ConfigManager {
                     autoLike: this.loadAutoLikeSetting()
                 },
                 speedMode: {
-                    enabled: false,
+                    enabled: this.getDefaultEnabledState('speedMode'),
                     key: 'speedMode',
                     seconds: this.loadSpeedSeconds(),
                     mode: this.loadSpeedModeType(),
@@ -39,6 +40,38 @@ export class ConfigManager {
                     maxSeconds: this.loadSpeedMaxSeconds()
                 }
             };
+        }
+
+        loadDefaultEnabledStates() {
+            const fallback = {
+                skipLive: true,
+                skipAd: true,
+                blockKeywords: true,
+                autoHighRes: true,
+                onlyResolution: false,
+                aiPreference: false,
+                speedMode: false
+            };
+
+            let savedStates = {};
+            try {
+                savedStates = JSON.parse(localStorage.getItem('douyin_default_toggle_states') || '{}');
+            } catch (error) {
+                savedStates = {};
+            }
+
+            return Object.keys(fallback).reduce((states, key) => {
+                states[key] = typeof savedStates[key] === 'boolean' ? savedStates[key] : fallback[key];
+                return states;
+            }, {});
+        }
+
+        getDefaultEnabledState(key) {
+            return this.defaultEnabledStates[key] ?? false;
+        }
+
+        getDefaultEnabledStates() {
+            return { ...this.defaultEnabledStates };
         }
 
         loadKeywords() {
@@ -185,6 +218,23 @@ export class ConfigManager {
         saveBlockTagsSetting(enabled) {
             this.config.blockKeywords.blockTags = enabled;
             localStorage.setItem('douyin_block_tags_enabled', enabled.toString());
+        }
+
+        saveDefaultEnabledState(key, enabled) {
+            if (!(key in this.defaultEnabledStates)) {
+                return;
+            }
+            this.defaultEnabledStates[key] = Boolean(enabled);
+            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultEnabledStates));
+        }
+
+        saveDefaultEnabledStates(states) {
+            Object.keys(this.defaultEnabledStates).forEach(key => {
+                if (typeof states[key] === 'boolean') {
+                    this.defaultEnabledStates[key] = states[key];
+                }
+            });
+            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultEnabledStates));
         }
 
         get(key) {
