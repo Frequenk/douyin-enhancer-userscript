@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 3.8
-// @changelog 新增默认设置；
+// @version 3.9
+// @changelog 优化智谱AI文案与模型选项，新增智谱详细报错展示；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -624,6 +624,53 @@
 
   // src/ui/UIManager.js
   var UIFactory = class _UIFactory {
+    static escapeHtml(value) {
+      return String(value != null ? value : "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    static buildZhipuErrorDetails(errorDetails = {}) {
+      const rows = [];
+      if (errorDetails.status) {
+        rows.push(`
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">HTTP \u72B6\u6001</div>
+                        <code style="display: block; background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; user-select: text;">${this.escapeHtml(errorDetails.status)}</code>
+                    </div>
+                `);
+      }
+      if (errorDetails.code) {
+        rows.push(`
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">\u9519\u8BEF\u4EE3\u7801</div>
+                        <code style="display: block; background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; user-select: text;">${this.escapeHtml(errorDetails.code)}</code>
+                    </div>
+                `);
+      }
+      if (errorDetails.message) {
+        rows.push(`
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">\u9519\u8BEF\u4FE1\u606F</div>
+                        <div style="background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; line-height: 1.6; user-select: text;">${this.escapeHtml(errorDetails.message)}</div>
+                    </div>
+                `);
+      }
+      if (errorDetails.rawResponse) {
+        rows.push(`
+                    <div>
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">\u539F\u59CB\u54CD\u5E94</div>
+                        <pre style="margin: 0; white-space: pre-wrap; word-break: break-all; background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; font-size: 12px; line-height: 1.5; user-select: text;">${this.escapeHtml(errorDetails.rawResponse)}</pre>
+                    </div>
+                `);
+      }
+      if (rows.length === 0) {
+        return "";
+      }
+      return `
+                <div style="background: rgba(254,44,85,0.08); border: 1px solid rgba(254,44,85,0.25); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="color: #fe2c55; font-size: 15px; margin-bottom: 12px; font-weight: bold;">\u63A5\u53E3\u8FD4\u56DE\u8BE6\u60C5</div>
+                    ${rows.join("")}
+                </div>
+            `;
+    }
     static createDialog(className, title, content, onSave, onCancel) {
       const existingDialog = document.querySelector(`.${className}`);
       if (existingDialog) {
@@ -757,7 +804,6 @@
       dialog.innerHTML = `
                 <div style="text-align: center; margin-bottom: 20px;">
                     <div style="font-size: 24px; margin-bottom: 8px;">\u{1F511} \u5982\u4F55\u83B7\u53D6\u667A\u8C31 API Key</div>
-                    <p style="color: #aaa; font-size: 12px; margin: 0;">\u514D\u8D39\u6CE8\u518C\uFF0C\u65E0\u9700\u672C\u5730\u90E8\u7F72\uFF0C\u5373\u53EF\u4F7F\u7528 AI \u89C6\u89C9\u7B5B\u9009</p>
                 </div>
 
                 <div style="${stepStyle}">
@@ -773,13 +819,6 @@
                     <div style="color: rgba(255,255,255,0.8); line-height: 1.6;">
                         \u767B\u5F55\u540E\u8FDB\u5165\u300C\u4E2A\u4EBA\u4E2D\u5FC3\u300D\u2192\u300CAPI Keys\u300D<br>
                         \u70B9\u51FB\u300C\u6DFB\u52A0\u65B0\u7684 API Key\u300D\u6309\u94AE\uFF0C\u590D\u5236\u751F\u6210\u7684 Key
-                    </div>
-                </div>
-
-                <div style="background: rgba(254, 44, 85, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
-                    <div style="color: #fe2c55; font-size: 13px; margin-bottom: 5px;">\u{1F4A1} \u63A8\u8350\u4F7F\u7528\u514D\u8D39\u6A21\u578B</div>
-                    <div style="color: rgba(255,255,255,0.7); font-size: 12px; line-height: 1.5;">
-                        <strong>GLM-4.6V-Flash</strong> - \u89C6\u89C9\u63A8\u7406\u80FD\u529B\u5F3A\uFF0C\u901F\u5EA6\u5FEB
                     </div>
                 </div>
 
@@ -805,7 +844,7 @@
       });
     }
     // 错误提示弹窗，根据服务商显示不同内容
-    static showErrorDialog(provider = "ollama") {
+    static showErrorDialog(provider = "ollama", errorDetails = null) {
       const dialog = document.createElement("div");
       dialog.className = "error-dialog-" + Date.now();
       dialog.style.cssText = `
@@ -828,20 +867,19 @@
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             `;
       if (provider === "zhipu") {
+        const errorDetailsHtml = this.buildZhipuErrorDetails(errorDetails);
+        const zhipuErrorContent = errorDetailsHtml || `
+                    <div style="background: rgba(254,44,85,0.08); border: 1px solid rgba(254,44,85,0.25); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="color: rgba(255,255,255,0.8); line-height: 1.6;">\u672A\u83B7\u53D6\u5230\u5177\u4F53\u62A5\u9519\u5185\u5BB9</div>
+                    </div>
+                `;
         dialog.innerHTML = `
                     <div style="text-align: center; margin-bottom: 20px;">
                         <div style="font-size: 32px; margin-bottom: 10px;">\u26A0\uFE0F \u667A\u8C31 API \u8C03\u7528\u5931\u8D25</div>
-                        <p style="color: #aaa; font-size: 13px;">\u8BF7\u68C0\u67E5\u4EE5\u4E0B\u53EF\u80FD\u7684\u539F\u56E0</p>
+                        <p style="color: #aaa; font-size: 13px;">\u4EE5\u4E0B\u4E3A\u63A5\u53E3\u8FD4\u56DE\u7684\u5177\u4F53\u62A5\u9519\u4FE1\u606F</p>
                     </div>
 
-                    <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                        <div style="color: #fe2c55; font-size: 15px; margin-bottom: 10px; font-weight: bold;">\u5E38\u89C1\u95EE\u9898\u6392\u67E5</div>
-                        <ul style="padding-left: 20px; margin: 0; line-height: 1.8; color: rgba(255,255,255,0.8);">
-                            <li>\u68C0\u67E5 API Key \u662F\u5426\u6B63\u786E\u590D\u5236\uFF08\u65E0\u591A\u4F59\u7A7A\u683C\uFF09</li>
-                            <li>\u786E\u8BA4\u8D26\u6237\u5DF2\u5B8C\u6210\u5B9E\u540D\u8BA4\u8BC1</li>
-                            <li>\u68C0\u67E5\u662F\u5426\u89E6\u53D1\u901F\u7387\u9650\u5236\uFF08\u514D\u8D39\u7528\u6237\u5E76\u53D1\u4E0A\u9650\u4E3A3\uFF09</li>
-                        </ul>
-                    </div>
+                    ${zhipuErrorContent}
 
                     <div style="text-align: center;">
                         <button class="zhipu-guide-btn" style="
@@ -1662,7 +1700,9 @@
       const currentZhipuModel = aiConfig.zhipuModel;
       const autoLikeEnabled = aiConfig.autoLike;
       const zhipuModels = [
-        { value: "glm-4.6v-flash", label: "GLM-4.6V-Flash (\u514D\u8D39)", desc: "\u89C6\u89C9\u63A8\u7406\uFF0C\u901F\u5EA6\u5FEB" }
+        { value: "glm-4.6v-flash", label: "GLM-4.6V-Flash (\u514D\u8D39, \u9AD8\u5CF0\u671F\u4E0D\u7A33\u5B9A)" },
+        { value: "glm-4.6v-flashx", label: "GLM-4.6V-FlashX (\u4ED8\u8D39,\u6BD4GLM-4.6V\u54CD\u5E94\u5FEB)" },
+        { value: "glm-4.6v", label: "GLM-4.6V (\u4ED8\u8D39)" }
       ];
       const isZhipuCustomModel = !zhipuModels.some((m) => m.value === currentZhipuModel);
       const ollamaModels = ["qwen3-vl:4b", "qwen2.5vl:7b"];
@@ -1679,11 +1719,11 @@
 
                 <!-- \u670D\u52A1\u5546\u9009\u62E9 -->
                 <div style="margin-bottom: 15px;">
-                    <label style="${labelStyle}">AI\u670D\u52A1\u5546 <span style="color: #fe2c55; font-weight: bold;">\u2728 \u65B0\u589E\u667A\u8C31AI</span></label>
+                    <label style="${labelStyle}">AI\u670D\u52A1\u5546</label>
                     <div style="position: relative;">
                         <select class="ai-provider-select" style="${selectStyle}">
-                            <option value="ollama" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === "ollama" ? "selected" : ""}>Ollama (\u672C\u5730\u90E8\u7F72)</option>
-                            <option value="zhipu" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === "zhipu" ? "selected" : ""}>\u667A\u8C31AI (\u514D\u8D39\u5728\u7EBF) \u2B50</option>
+                            <option value="ollama" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === "ollama" ? "selected" : ""}>Ollama (\u672C\u5730\u90E8\u7F72\uFF0C\u63A8\u8350)</option>
+                            <option value="zhipu" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === "zhipu" ? "selected" : ""}>\u667A\u8C31AI (\u5728\u7EBF)</option>
                         </select>
                         <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: rgba(255, 255, 255, 0.5);">\u25BC</span>
                     </div>
@@ -1703,7 +1743,7 @@
                     <input type="text" class="ollama-model-input" value="${isOllamaCustomModel ? currentOllamaModel : ""}" placeholder="\u8F93\u5165\u81EA\u5B9A\u4E49\u6A21\u578B\u540D\u79F0"
                         style="${inputStyle} margin-top: 10px; display: ${isOllamaCustomModel ? "block" : "none"};">
                     <div style="color: rgba(255, 255, 255, 0.5); font-size: 11px; margin-top: 10px;">
-                        \u63D0\u793A\uFF1A\u9700\u8981\u5B89\u88C5 <a href="https://ollama.com/" target="_blank" style="color: #fe2c55;">Ollama</a> \u5E76\u4E0B\u8F7D\u89C6\u89C9\u6A21\u578B
+                        \u63D0\u793A\uFF1A\u9700\u8981\u5B89\u88C5 <a href="https://ollama.com/" target="_blank" style="color: #fe2c55; text-decoration: underline;">Ollama</a> \u5E76\u4E0B\u8F7D\u89C6\u89C9\u6A21\u578B
                     </div>
                 </div>
 
@@ -1726,6 +1766,14 @@
                     </div>
                     <input type="text" class="zhipu-model-input" value="${isZhipuCustomModel ? currentZhipuModel : ""}" placeholder="\u8F93\u5165\u81EA\u5B9A\u4E49\u6A21\u578B\u540D\u79F0"
                         style="${inputStyle} margin-top: 10px; display: ${isZhipuCustomModel ? "block" : "none"};">
+                    <div style="color: rgba(255, 255, 255, 0.5); font-size: 11px; margin-top: 10px; line-height: 1.7;">
+                        <div>\u65E0\u8D44\u6E90\u5305\u65F6\u81EA\u52A8\u6309\u76EE\u5F55\u4EF7\u6263\u667A\u8C31\u7684\u8D26\u6237\u4F59\u989D</div>
+                        <div style="margin-top: 6px;">\u63A8\u8350\u7279\u60E0\u4E13\u533A\u7684\u8FD9\u4E24\u4E2A\u5957\u9910</div>
+                        <div>GLM-4.6V-FlashX\uFF1A2.9 \u5143 / 1000 \u4E07 token</div>
+                        <div>GLM-4.6V\uFF1A5.9 \u5143 / 1000 \u4E07 token</div>
+                        <div style="margin-top: 6px;">\u8FD9\u662F\u6211\u5728 2026 \u5E74 3 \u6708 12 \u65E5\u770B\u5230\u7684\u6D3B\u52A8\u63A8\u8350\uFF0C\u6D3B\u52A8\u53EF\u80FD\u53D8\u5316\u3002</div>
+                        <div>\u5982\u53D8\u5316\u8BF7\u81EA\u884C\u67E5\u9605\u667A\u8C31\u5B98\u65B9\u6587\u6863\uFF0C\u9009\u62E9\u65B0\u7684\u6A21\u578B\u6216\u4F18\u60E0\u5957\u9910\u3002</div>
+                    </div>
                 </div>
 
                 <!-- \u81EA\u52A8\u70B9\u8D5E\u9009\u9879 -->
@@ -2077,7 +2125,7 @@
       } catch (error) {
         console.error("AI\u5224\u65AD\u529F\u80FD\u51FA\u9519:", error);
         const provider = this.config.get("aiPreference").provider;
-        UIFactory.showErrorDialog(provider);
+        UIFactory.showErrorDialog(provider, this.extractErrorDetails(provider, error));
         this.config.setEnabled("aiPreference", false);
         UIManager2.updateToggleButtons("ai-preference-button", false);
         this.stopChecking = true;
@@ -2162,12 +2210,38 @@
       });
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`\u667A\u8C31\u8BF7\u6C42\u5931\u8D25: ${response.status} - ${errorText}`);
+        let errorData = null;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (_) {
+          errorData = null;
+        }
+        const apiError = errorData == null ? void 0 : errorData.error;
+        const error = new Error(`\u667A\u8C31\u8BF7\u6C42\u5931\u8D25: ${response.status}${(apiError == null ? void 0 : apiError.code) ? ` (${apiError.code})` : ""} - ${(apiError == null ? void 0 : apiError.message) || errorText}`);
+        error.provider = "zhipu";
+        error.status = response.status;
+        error.apiCode = (apiError == null ? void 0 : apiError.code) || "";
+        error.apiMessage = (apiError == null ? void 0 : apiError.message) || "";
+        error.rawResponse = errorText;
+        throw error;
       }
       const result = await response.json();
       let answer = ((_d = (_c = (_b = (_a = result.choices) == null ? void 0 : _a[0]) == null ? void 0 : _b.message) == null ? void 0 : _c.content) == null ? void 0 : _d.trim()) || "";
       answer = answer.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
       return answer;
+    }
+    extractErrorDetails(provider, error) {
+      if (provider === "zhipu") {
+        return {
+          status: (error == null ? void 0 : error.status) || "",
+          code: (error == null ? void 0 : error.apiCode) || "",
+          message: (error == null ? void 0 : error.apiMessage) || (error == null ? void 0 : error.message) || "\u672A\u77E5\u9519\u8BEF",
+          rawResponse: (error == null ? void 0 : error.rawResponse) || ""
+        };
+      }
+      return {
+        message: (error == null ? void 0 : error.message) || "\u672A\u77E5\u9519\u8BEF"
+      };
     }
     handleResponse(aiResponse) {
       const content = this.config.get("aiPreference").content;

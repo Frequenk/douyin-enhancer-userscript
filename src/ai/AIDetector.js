@@ -41,7 +41,7 @@ export class AIDetector {
                 console.error('AI判断功能出错:', error);
                 // 显示错误提示，根据服务商类型显示不同内容
                 const provider = this.config.get('aiPreference').provider;
-                UIFactory.showErrorDialog(provider);
+                UIFactory.showErrorDialog(provider, this.extractErrorDetails(provider, error));
                 // 关闭AI喜好模式
                 this.config.setEnabled('aiPreference', false);
                 UIManager.updateToggleButtons('ai-preference-button', false);
@@ -139,7 +139,21 @@ export class AIDetector {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`智谱请求失败: ${response.status} - ${errorText}`);
+                let errorData = null;
+                try {
+                    errorData = JSON.parse(errorText);
+                } catch (_) {
+                    errorData = null;
+                }
+
+                const apiError = errorData?.error;
+                const error = new Error(`智谱请求失败: ${response.status}${apiError?.code ? ` (${apiError.code})` : ''} - ${apiError?.message || errorText}`);
+                error.provider = 'zhipu';
+                error.status = response.status;
+                error.apiCode = apiError?.code || '';
+                error.apiMessage = apiError?.message || '';
+                error.rawResponse = errorText;
+                throw error;
             }
 
             const result = await response.json();
@@ -148,6 +162,21 @@ export class AIDetector {
             // 清理可能存在的 <think> 标签
             answer = answer.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
             return answer;
+        }
+
+        extractErrorDetails(provider, error) {
+            if (provider === 'zhipu') {
+                return {
+                    status: error?.status || '',
+                    code: error?.apiCode || '',
+                    message: error?.apiMessage || error?.message || '未知错误',
+                    rawResponse: error?.rawResponse || ''
+                };
+            }
+
+            return {
+                message: error?.message || '未知错误'
+            };
         }
 
         handleResponse(aiResponse) {

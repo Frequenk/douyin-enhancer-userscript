@@ -2,6 +2,66 @@ import { SELECTORS } from '../core/selectors.js';
 import { STAT_FIELDS } from '../stats/StatsTracker.js';
 
 export class UIFactory {
+        static escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        static buildZhipuErrorDetails(errorDetails = {}) {
+            const rows = [];
+
+            if (errorDetails.status) {
+                rows.push(`
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">HTTP 状态</div>
+                        <code style="display: block; background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; user-select: text;">${this.escapeHtml(errorDetails.status)}</code>
+                    </div>
+                `);
+            }
+
+            if (errorDetails.code) {
+                rows.push(`
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">错误代码</div>
+                        <code style="display: block; background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; user-select: text;">${this.escapeHtml(errorDetails.code)}</code>
+                    </div>
+                `);
+            }
+
+            if (errorDetails.message) {
+                rows.push(`
+                    <div style="margin-bottom: 10px;">
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">错误信息</div>
+                        <div style="background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; line-height: 1.6; user-select: text;">${this.escapeHtml(errorDetails.message)}</div>
+                    </div>
+                `);
+            }
+
+            if (errorDetails.rawResponse) {
+                rows.push(`
+                    <div>
+                        <div style="color: rgba(255,255,255,0.55); font-size: 12px; margin-bottom: 4px;">原始响应</div>
+                        <pre style="margin: 0; white-space: pre-wrap; word-break: break-all; background: rgba(255,255,255,0.08); padding: 8px 10px; border-radius: 6px; color: #fff; font-size: 12px; line-height: 1.5; user-select: text;">${this.escapeHtml(errorDetails.rawResponse)}</pre>
+                    </div>
+                `);
+            }
+
+            if (rows.length === 0) {
+                return '';
+            }
+
+            return `
+                <div style="background: rgba(254,44,85,0.08); border: 1px solid rgba(254,44,85,0.25); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="color: #fe2c55; font-size: 15px; margin-bottom: 12px; font-weight: bold;">接口返回详情</div>
+                    ${rows.join('')}
+                </div>
+            `;
+        }
+
         static createDialog(className, title, content, onSave, onCancel) {
             const existingDialog = document.querySelector(`.${className}`);
             if (existingDialog) {
@@ -157,7 +217,6 @@ export class UIFactory {
             dialog.innerHTML = `
                 <div style="text-align: center; margin-bottom: 20px;">
                     <div style="font-size: 24px; margin-bottom: 8px;">🔑 如何获取智谱 API Key</div>
-                    <p style="color: #aaa; font-size: 12px; margin: 0;">免费注册，无需本地部署，即可使用 AI 视觉筛选</p>
                 </div>
 
                 <div style="${stepStyle}">
@@ -173,13 +232,6 @@ export class UIFactory {
                     <div style="color: rgba(255,255,255,0.8); line-height: 1.6;">
                         登录后进入「个人中心」→「API Keys」<br>
                         点击「添加新的 API Key」按钮，复制生成的 Key
-                    </div>
-                </div>
-
-                <div style="background: rgba(254, 44, 85, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
-                    <div style="color: #fe2c55; font-size: 13px; margin-bottom: 5px;">💡 推荐使用免费模型</div>
-                    <div style="color: rgba(255,255,255,0.7); font-size: 12px; line-height: 1.5;">
-                        <strong>GLM-4.6V-Flash</strong> - 视觉推理能力强，速度快
                     </div>
                 </div>
 
@@ -210,7 +262,7 @@ export class UIFactory {
         }
 
         // 错误提示弹窗，根据服务商显示不同内容
-        static showErrorDialog(provider = 'ollama') {
+        static showErrorDialog(provider = 'ollama', errorDetails = null) {
             const dialog = document.createElement('div');
             dialog.className = 'error-dialog-' + Date.now();
             dialog.style.cssText = `
@@ -235,20 +287,19 @@ export class UIFactory {
 
             if (provider === 'zhipu') {
                 // 智谱错误提示
+                const errorDetailsHtml = this.buildZhipuErrorDetails(errorDetails);
+                const zhipuErrorContent = errorDetailsHtml || `
+                    <div style="background: rgba(254,44,85,0.08); border: 1px solid rgba(254,44,85,0.25); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <div style="color: rgba(255,255,255,0.8); line-height: 1.6;">未获取到具体报错内容</div>
+                    </div>
+                `;
                 dialog.innerHTML = `
                     <div style="text-align: center; margin-bottom: 20px;">
                         <div style="font-size: 32px; margin-bottom: 10px;">⚠️ 智谱 API 调用失败</div>
-                        <p style="color: #aaa; font-size: 13px;">请检查以下可能的原因</p>
+                        <p style="color: #aaa; font-size: 13px;">以下为接口返回的具体报错信息</p>
                     </div>
 
-                    <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                        <div style="color: #fe2c55; font-size: 15px; margin-bottom: 10px; font-weight: bold;">常见问题排查</div>
-                        <ul style="padding-left: 20px; margin: 0; line-height: 1.8; color: rgba(255,255,255,0.8);">
-                            <li>检查 API Key 是否正确复制（无多余空格）</li>
-                            <li>确认账户已完成实名认证</li>
-                            <li>检查是否触发速率限制（免费用户并发上限为3）</li>
-                        </ul>
-                    </div>
+                    ${zhipuErrorContent}
 
                     <div style="text-align: center;">
                         <button class="zhipu-guide-btn" style="
@@ -1131,7 +1182,9 @@ export class UIFactory {
 
             // 智谱免费模型列表
             const zhipuModels = [
-                { value: 'glm-4.6v-flash', label: 'GLM-4.6V-Flash (免费)', desc: '视觉推理，速度快' }
+                { value: 'glm-4.6v-flash', label: 'GLM-4.6V-Flash (免费, 高峰期不稳定)' },
+                { value: 'glm-4.6v-flashx', label: 'GLM-4.6V-FlashX (付费,比GLM-4.6V响应快)' },
+                { value: 'glm-4.6v', label: 'GLM-4.6V (付费)' }
             ];
             const isZhipuCustomModel = !zhipuModels.some(m => m.value === currentZhipuModel);
 
@@ -1152,11 +1205,11 @@ export class UIFactory {
 
                 <!-- 服务商选择 -->
                 <div style="margin-bottom: 15px;">
-                    <label style="${labelStyle}">AI服务商 <span style="color: #fe2c55; font-weight: bold;">✨ 新增智谱AI</span></label>
+                    <label style="${labelStyle}">AI服务商</label>
                     <div style="position: relative;">
                         <select class="ai-provider-select" style="${selectStyle}">
-                            <option value="ollama" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === 'ollama' ? 'selected' : ''}>Ollama (本地部署)</option>
-                            <option value="zhipu" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === 'zhipu' ? 'selected' : ''}>智谱AI (免费在线) ⭐</option>
+                            <option value="ollama" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === 'ollama' ? 'selected' : ''}>Ollama (本地部署，推荐)</option>
+                            <option value="zhipu" style="background: rgba(0, 0, 0, 0.9); color: white;" ${currentProvider === 'zhipu' ? 'selected' : ''}>智谱AI (在线)</option>
                         </select>
                         <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); pointer-events: none; color: rgba(255, 255, 255, 0.5);">▼</span>
                     </div>
@@ -1176,7 +1229,7 @@ export class UIFactory {
                     <input type="text" class="ollama-model-input" value="${isOllamaCustomModel ? currentOllamaModel : ''}" placeholder="输入自定义模型名称"
                         style="${inputStyle} margin-top: 10px; display: ${isOllamaCustomModel ? 'block' : 'none'};">
                     <div style="color: rgba(255, 255, 255, 0.5); font-size: 11px; margin-top: 10px;">
-                        提示：需要安装 <a href="https://ollama.com/" target="_blank" style="color: #fe2c55;">Ollama</a> 并下载视觉模型
+                        提示：需要安装 <a href="https://ollama.com/" target="_blank" style="color: #fe2c55; text-decoration: underline;">Ollama</a> 并下载视觉模型
                     </div>
                 </div>
 
@@ -1199,6 +1252,14 @@ export class UIFactory {
                     </div>
                     <input type="text" class="zhipu-model-input" value="${isZhipuCustomModel ? currentZhipuModel : ''}" placeholder="输入自定义模型名称"
                         style="${inputStyle} margin-top: 10px; display: ${isZhipuCustomModel ? 'block' : 'none'};">
+                    <div style="color: rgba(255, 255, 255, 0.5); font-size: 11px; margin-top: 10px; line-height: 1.7;">
+                        <div>无资源包时自动按目录价扣智谱的账户余额</div>
+                        <div style="margin-top: 6px;">推荐特惠专区的这两个套餐</div>
+                        <div>GLM-4.6V-FlashX：2.9 元 / 1000 万 token</div>
+                        <div>GLM-4.6V：5.9 元 / 1000 万 token</div>
+                        <div style="margin-top: 6px;">这是我在 2026 年 3 月 12 日看到的活动推荐，活动可能变化。</div>
+                        <div>如变化请自行查阅智谱官方文档，选择新的模型或优惠套餐。</div>
+                    </div>
                 </div>
 
                 <!-- 自动点赞选项 -->
