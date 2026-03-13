@@ -421,46 +421,63 @@ export class UIFactory {
                     type: 'info',
                     getHtml: () => this.getStatsLabelHtml(),
                     className: 'stats-summary-button',
-                    onClick: () => this.showStatsDialog()
+                    onClick: () => this.showStatsDialog(),
+                    defaultStateKey: 'statsSummary',
+                    defaultStateType: 'visibility',
+                    defaultStateLabel: '统计'
                 },
                 {
                     text: '跳直播',
                     className: 'skip-live-button',
                     configKey: 'skipLive',
+                    defaultStateKey: 'skipLive',
+                    defaultStateType: 'toggle',
                     shortcut: '='
                 },
                 {
                     text: '跳广告',
                     className: 'skip-ad-button',
-                    configKey: 'skipAd'
+                    configKey: 'skipAd',
+                    defaultStateKey: 'skipAd',
+                    defaultStateType: 'toggle'
                 },
                 {
                     text: '账号屏蔽',
                     className: 'block-account-keyword-button',
                     configKey: 'blockKeywords',
+                    defaultStateKey: 'blockKeywords',
+                    defaultStateType: 'toggle',
                     onClick: () => this.showKeywordDialog()
                 },
                 {
                     text: '最高清',
                     className: 'auto-high-resolution-button',
-                    configKey: 'autoHighRes'
+                    configKey: 'autoHighRes',
+                    defaultStateKey: 'autoHighRes',
+                    defaultStateType: 'toggle'
                 },
                 {
                     text: `${this.config.get('onlyResolution').resolution}筛选`,
                     className: 'resolution-filter-button',
                     configKey: 'onlyResolution',
+                    defaultStateKey: 'onlyResolution',
+                    defaultStateType: 'toggle',
                     onClick: () => this.showResolutionDialog()
                 },
                 {
                     text: 'AI喜好',
                     className: 'ai-preference-button',
                     configKey: 'aiPreference',
+                    defaultStateKey: 'aiPreference',
+                    defaultStateType: 'toggle',
                     onClick: () => this.showAiPreferenceDialog()
                 },
                 {
                     text: this.getSpeedModeLabel(),
                     className: 'speed-mode-button',
                     configKey: 'speedMode',
+                    defaultStateKey: 'speedMode',
+                    defaultStateType: 'toggle',
                     onClick: () => this.showSpeedDialog()
                 }
             ];
@@ -484,6 +501,13 @@ export class UIFactory {
 
                 this.buttonConfigs.forEach(config => {
                     let button = parent.querySelector(`.${config.className}`);
+                    const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
+                    if (!shouldRender) {
+                        if (button) {
+                            button.remove();
+                        }
+                        return;
+                    }
                     if (!button) {
                         if (config.type === 'info') {
                             button = UIFactory.createInfoButton(
@@ -612,18 +636,41 @@ export class UIFactory {
         getDefaultStateButtonHtml() {
             return `
                 <span class="default-state-pill" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.92); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.22); white-space: nowrap; line-height: 16px;">
-                    默认设置
+                    设置
                 </span>
             `;
         }
 
         getDefaultStateItems() {
             return this.buttonConfigs
-                .filter(config => config.configKey)
+                .filter(config => config.defaultStateKey)
                 .map(config => ({
-                    key: config.configKey,
-                    label: config.text
+                    key: config.defaultStateKey,
+                    label: config.defaultStateLabel || config.text,
+                    stateType: config.defaultStateType
                 }));
+        }
+
+        getDefaultStateOptions(stateType) {
+            if (stateType === 'visibility') {
+                return [
+                    { value: 'visible', label: '显示' },
+                    { value: 'hidden', label: '隐藏' }
+                ];
+            }
+            return [
+                { value: 'enabled', label: '显示 + 默认开启' },
+                { value: 'disabled', label: '显示 + 默认关闭' },
+                { value: 'hidden', label: '隐藏 + 默认关闭' }
+            ];
+        }
+
+        applyDefaultStateSelection(row, nextState) {
+            row.dataset.currentState = nextState;
+            row.querySelectorAll('.default-state-choice').forEach(choice => {
+                const isSelected = choice.dataset.stateValue === nextState;
+                choice.classList.toggle('is-selected', isSelected);
+            });
         }
 
         formatDuration(totalSeconds) {
@@ -646,8 +693,10 @@ export class UIFactory {
                 return;
             }
 
-            const defaultStates = this.config.getDefaultEnabledStates();
-            const toggleItems = this.getDefaultStateItems();
+            const defaultStates = this.config.getDefaultButtonStates();
+            const items = this.getDefaultStateItems();
+            const toggleItems = items.filter(item => item.stateType === 'toggle');
+            const visibilityItems = items.filter(item => item.stateType === 'visibility');
             const dialog = document.createElement('div');
             dialog.className = 'default-states-dialog';
             dialog.style.cssText = `
@@ -669,22 +718,43 @@ export class UIFactory {
 
             dialog.innerHTML = `
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                    <div style="font-size: 16px; font-weight: 600;">默认设置</div>
+                    <div style="font-size: 16px; font-weight: 600;">按钮设置</div>
                     <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">关闭</button>
                 </div>
                 <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-                    这里配置的是每次打开并进入抖音时，底部栏各个功能开关的初始状态。保存后不会立即修改你当前这次会话里的开关，下次进入页面时才会按这里的默认值启动。
+                    设置按钮的默认状态，刷新后生效。
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
-                    ${toggleItems.map(item => `
-                        <label style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
-                            <span style="color: white; font-size: 13px;">${item.label}</span>
-                            <span style="display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.72); font-size: 12px;">
-                                <span class="default-state-status">${defaultStates[item.key] ? '默认开' : '默认关'}</span>
-                                <input type="checkbox" data-default-key="${item.key}" ${defaultStates[item.key] ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #fe2c55; cursor: pointer;">
-                            </span>
-                        </label>
-                    `).join('')}
+                <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">功能按钮</div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            ${toggleItems.map(item => `
+                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || 'disabled'}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                                    <div class="default-state-choice-group">
+                                        ${this.getDefaultStateOptions(item.stateType).map(option => `
+                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">工具入口</div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            ${visibilityItems.map(item => `
+                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || 'visible'}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                                    <div class="default-state-choice-group">
+                                        ${this.getDefaultStateOptions(item.stateType).map(option => `
+                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button class="default-states-save-btn" style="flex: 1; padding: 8px 10px; background: #fe2c55; color: white; border: none; border-radius: 6px; cursor: pointer;">保存</button>
@@ -700,20 +770,20 @@ export class UIFactory {
             dialog.querySelector('.default-states-cancel-btn').addEventListener('click', closeDialog);
             dialog.querySelector('.default-states-save-btn').addEventListener('click', () => {
                 const nextStates = {};
-                dialog.querySelectorAll('[data-default-key]').forEach(input => {
-                    nextStates[input.dataset.defaultKey] = input.checked;
+                dialog.querySelectorAll('.default-state-row').forEach(row => {
+                    nextStates[row.dataset.defaultKey] = row.dataset.currentState;
                 });
                 this.config.saveDefaultEnabledStates(nextStates);
-                this.notificationManager.showMessage('默认设置已保存，下次进入抖音时生效');
+                this.notificationManager.showMessage('按钮设置已保存，刷新后生效');
                 closeDialog();
             });
 
-            dialog.querySelectorAll('[data-default-key]').forEach(input => {
-                input.addEventListener('change', () => {
-                    const label = input.closest('label')?.querySelector('.default-state-status');
-                    if (label) {
-                        label.textContent = input.checked ? '默认开' : '默认关';
-                    }
+            dialog.querySelectorAll('.default-state-row').forEach(row => {
+                this.applyDefaultStateSelection(row, row.dataset.currentState);
+                row.querySelectorAll('.default-state-choice').forEach(choice => {
+                    choice.addEventListener('click', () => {
+                        this.applyDefaultStateSelection(row, choice.dataset.stateValue);
+                    });
                 });
             });
 

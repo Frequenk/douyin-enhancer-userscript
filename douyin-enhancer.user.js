@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 3.9
-// @changelog 优化智谱AI文案与模型选项，新增智谱详细报错展示；
+// @version 4.0
+// @changelog 新增按钮设置三态配置，支持功能按钮显隐与默认状态控制，支持统计胶囊显示/隐藏；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -78,7 +78,20 @@
   // src/core/ConfigManager.js
   var ConfigManager = class {
     constructor() {
-      this.defaultEnabledStates = this.loadDefaultEnabledStates();
+      this.defaultToggleStatesFallback = {
+        skipLive: "enabled",
+        skipAd: "enabled",
+        blockKeywords: "enabled",
+        autoHighRes: "enabled",
+        onlyResolution: "disabled",
+        aiPreference: "disabled",
+        speedMode: "disabled"
+      };
+      this.defaultVisibilityStatesFallback = {
+        statsSummary: "visible"
+      };
+      this.defaultButtonStates = this.loadDefaultButtonStates();
+      this.sessionButtonStates = { ...this.defaultButtonStates };
       this.config = {
         skipLive: { enabled: this.getDefaultEnabledState("skipLive"), key: "skipLive" },
         autoHighRes: { enabled: this.getDefaultEnabledState("autoHighRes"), key: "autoHighRes" },
@@ -119,33 +132,70 @@
         }
       };
     }
-    loadDefaultEnabledStates() {
-      const fallback = {
-        skipLive: true,
-        skipAd: true,
-        blockKeywords: true,
-        autoHighRes: true,
-        onlyResolution: false,
-        aiPreference: false,
-        speedMode: false
-      };
+    loadDefaultButtonStates() {
       let savedStates = {};
       try {
         savedStates = JSON.parse(localStorage.getItem("douyin_default_toggle_states") || "{}");
       } catch (error) {
         savedStates = {};
       }
-      return Object.keys(fallback).reduce((states, key) => {
-        states[key] = typeof savedStates[key] === "boolean" ? savedStates[key] : fallback[key];
-        return states;
-      }, {});
+      const states = {};
+      Object.keys(this.defaultToggleStatesFallback).forEach((key) => {
+        states[key] = this.normalizeDefaultButtonState(key, savedStates[key]);
+      });
+      Object.keys(this.defaultVisibilityStatesFallback).forEach((key) => {
+        states[key] = this.normalizeDefaultButtonState(key, savedStates[key]);
+      });
+      return states;
+    }
+    isToggleButtonStateKey(key) {
+      return key in this.defaultToggleStatesFallback;
+    }
+    isVisibilityButtonStateKey(key) {
+      return key in this.defaultVisibilityStatesFallback;
+    }
+    normalizeDefaultButtonState(key, value) {
+      if (this.isToggleButtonStateKey(key)) {
+        if (value === "enabled" || value === "disabled" || value === "hidden") {
+          return value;
+        }
+        if (typeof value === "boolean") {
+          return value ? "enabled" : "disabled";
+        }
+        return this.defaultToggleStatesFallback[key];
+      }
+      if (this.isVisibilityButtonStateKey(key)) {
+        if (value === "visible" || value === "hidden") {
+          return value;
+        }
+        if (typeof value === "boolean") {
+          return value ? "visible" : "hidden";
+        }
+        return this.defaultVisibilityStatesFallback[key];
+      }
+      return value;
     }
     getDefaultEnabledState(key) {
-      var _a;
-      return (_a = this.defaultEnabledStates[key]) != null ? _a : false;
+      return this.sessionButtonStates[key] === "enabled";
+    }
+    getDefaultButtonStates() {
+      return { ...this.defaultButtonStates };
+    }
+    isButtonVisibleInCurrentSession(key) {
+      const state = this.sessionButtonStates[key];
+      if (this.isToggleButtonStateKey(key)) {
+        return state !== "hidden";
+      }
+      if (this.isVisibilityButtonStateKey(key)) {
+        return state === "visible";
+      }
+      return true;
     }
     getDefaultEnabledStates() {
-      return { ...this.defaultEnabledStates };
+      return Object.keys(this.defaultToggleStatesFallback).reduce((states, key) => {
+        states[key] = this.defaultButtonStates[key] === "enabled";
+        return states;
+      }, {});
     }
     loadKeywords() {
       return JSON.parse(localStorage.getItem("douyin_blocked_keywords") || '["\u5E97", "\u7504\u9009"]');
@@ -262,19 +312,19 @@
       localStorage.setItem("douyin_block_tags_enabled", enabled.toString());
     }
     saveDefaultEnabledState(key, enabled) {
-      if (!(key in this.defaultEnabledStates)) {
+      if (!this.isToggleButtonStateKey(key)) {
         return;
       }
-      this.defaultEnabledStates[key] = Boolean(enabled);
-      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultEnabledStates));
+      this.defaultButtonStates[key] = enabled ? "enabled" : "disabled";
+      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultButtonStates));
     }
     saveDefaultEnabledStates(states) {
-      Object.keys(this.defaultEnabledStates).forEach((key) => {
-        if (typeof states[key] === "boolean") {
-          this.defaultEnabledStates[key] = states[key];
+      Object.keys(states).forEach((key) => {
+        if (this.isToggleButtonStateKey(key) || this.isVisibilityButtonStateKey(key)) {
+          this.defaultButtonStates[key] = this.normalizeDefaultButtonState(key, states[key]);
         }
       });
-      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultEnabledStates));
+      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultButtonStates));
     }
     get(key) {
       return this.config[key];
@@ -990,46 +1040,63 @@
           type: "info",
           getHtml: () => this.getStatsLabelHtml(),
           className: "stats-summary-button",
-          onClick: () => this.showStatsDialog()
+          onClick: () => this.showStatsDialog(),
+          defaultStateKey: "statsSummary",
+          defaultStateType: "visibility",
+          defaultStateLabel: "\u7EDF\u8BA1"
         },
         {
           text: "\u8DF3\u76F4\u64AD",
           className: "skip-live-button",
           configKey: "skipLive",
+          defaultStateKey: "skipLive",
+          defaultStateType: "toggle",
           shortcut: "="
         },
         {
           text: "\u8DF3\u5E7F\u544A",
           className: "skip-ad-button",
-          configKey: "skipAd"
+          configKey: "skipAd",
+          defaultStateKey: "skipAd",
+          defaultStateType: "toggle"
         },
         {
           text: "\u8D26\u53F7\u5C4F\u853D",
           className: "block-account-keyword-button",
           configKey: "blockKeywords",
+          defaultStateKey: "blockKeywords",
+          defaultStateType: "toggle",
           onClick: () => this.showKeywordDialog()
         },
         {
           text: "\u6700\u9AD8\u6E05",
           className: "auto-high-resolution-button",
-          configKey: "autoHighRes"
+          configKey: "autoHighRes",
+          defaultStateKey: "autoHighRes",
+          defaultStateType: "toggle"
         },
         {
           text: `${this.config.get("onlyResolution").resolution}\u7B5B\u9009`,
           className: "resolution-filter-button",
           configKey: "onlyResolution",
+          defaultStateKey: "onlyResolution",
+          defaultStateType: "toggle",
           onClick: () => this.showResolutionDialog()
         },
         {
           text: "AI\u559C\u597D",
           className: "ai-preference-button",
           configKey: "aiPreference",
+          defaultStateKey: "aiPreference",
+          defaultStateType: "toggle",
           onClick: () => this.showAiPreferenceDialog()
         },
         {
           text: this.getSpeedModeLabel(),
           className: "speed-mode-button",
           configKey: "speedMode",
+          defaultStateKey: "speedMode",
+          defaultStateType: "toggle",
           onClick: () => this.showSpeedDialog()
         }
       ];
@@ -1051,6 +1118,13 @@
         const isRowReverse = flexDirection === "row-reverse";
         this.buttonConfigs.forEach((config) => {
           let button = parent.querySelector(`.${config.className}`);
+          const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
+          if (!shouldRender) {
+            if (button) {
+              button.remove();
+            }
+            return;
+          }
           if (!button) {
             if (config.type === "info") {
               button = UIFactory.createInfoButton(
@@ -1174,15 +1248,36 @@
     getDefaultStateButtonHtml() {
       return `
                 <span class="default-state-pill" style="background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.92); padding: 2px 8px; border-radius: 999px; font-size: 11px; letter-spacing: 0.3px; border: 1px solid rgba(255,255,255,0.22); white-space: nowrap; line-height: 16px;">
-                    \u9ED8\u8BA4\u8BBE\u7F6E
+                    \u8BBE\u7F6E
                 </span>
             `;
     }
     getDefaultStateItems() {
-      return this.buttonConfigs.filter((config) => config.configKey).map((config) => ({
-        key: config.configKey,
-        label: config.text
+      return this.buttonConfigs.filter((config) => config.defaultStateKey).map((config) => ({
+        key: config.defaultStateKey,
+        label: config.defaultStateLabel || config.text,
+        stateType: config.defaultStateType
       }));
+    }
+    getDefaultStateOptions(stateType) {
+      if (stateType === "visibility") {
+        return [
+          { value: "visible", label: "\u663E\u793A" },
+          { value: "hidden", label: "\u9690\u85CF" }
+        ];
+      }
+      return [
+        { value: "enabled", label: "\u663E\u793A + \u9ED8\u8BA4\u5F00\u542F" },
+        { value: "disabled", label: "\u663E\u793A + \u9ED8\u8BA4\u5173\u95ED" },
+        { value: "hidden", label: "\u9690\u85CF + \u9ED8\u8BA4\u5173\u95ED" }
+      ];
+    }
+    applyDefaultStateSelection(row, nextState) {
+      row.dataset.currentState = nextState;
+      row.querySelectorAll(".default-state-choice").forEach((choice) => {
+        const isSelected = choice.dataset.stateValue === nextState;
+        choice.classList.toggle("is-selected", isSelected);
+      });
     }
     formatDuration(totalSeconds) {
       const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -1203,8 +1298,10 @@
         }, 120);
         return;
       }
-      const defaultStates = this.config.getDefaultEnabledStates();
-      const toggleItems = this.getDefaultStateItems();
+      const defaultStates = this.config.getDefaultButtonStates();
+      const items = this.getDefaultStateItems();
+      const toggleItems = items.filter((item) => item.stateType === "toggle");
+      const visibilityItems = items.filter((item) => item.stateType === "visibility");
       const dialog = document.createElement("div");
       dialog.className = "default-states-dialog";
       dialog.style.cssText = `
@@ -1225,22 +1322,43 @@
             `;
       dialog.innerHTML = `
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                    <div style="font-size: 16px; font-weight: 600;">\u9ED8\u8BA4\u8BBE\u7F6E</div>
+                    <div style="font-size: 16px; font-weight: 600;">\u6309\u94AE\u8BBE\u7F6E</div>
                     <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">\u5173\u95ED</button>
                 </div>
                 <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-                    \u8FD9\u91CC\u914D\u7F6E\u7684\u662F\u6BCF\u6B21\u6253\u5F00\u5E76\u8FDB\u5165\u6296\u97F3\u65F6\uFF0C\u5E95\u90E8\u680F\u5404\u4E2A\u529F\u80FD\u5F00\u5173\u7684\u521D\u59CB\u72B6\u6001\u3002\u4FDD\u5B58\u540E\u4E0D\u4F1A\u7ACB\u5373\u4FEE\u6539\u4F60\u5F53\u524D\u8FD9\u6B21\u4F1A\u8BDD\u91CC\u7684\u5F00\u5173\uFF0C\u4E0B\u6B21\u8FDB\u5165\u9875\u9762\u65F6\u624D\u4F1A\u6309\u8FD9\u91CC\u7684\u9ED8\u8BA4\u503C\u542F\u52A8\u3002
+                    \u8BBE\u7F6E\u6309\u94AE\u7684\u9ED8\u8BA4\u72B6\u6001\uFF0C\u5237\u65B0\u540E\u751F\u6548\u3002
                 </div>
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;">
-                    ${toggleItems.map((item) => `
-                        <label style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; cursor: pointer;">
-                            <span style="color: white; font-size: 13px;">${item.label}</span>
-                            <span style="display: inline-flex; align-items: center; gap: 8px; color: rgba(255,255,255,0.72); font-size: 12px;">
-                                <span class="default-state-status">${defaultStates[item.key] ? "\u9ED8\u8BA4\u5F00" : "\u9ED8\u8BA4\u5173"}</span>
-                                <input type="checkbox" data-default-key="${item.key}" ${defaultStates[item.key] ? "checked" : ""} style="width: 16px; height: 16px; accent-color: #fe2c55; cursor: pointer;">
-                            </span>
-                        </label>
-                    `).join("")}
+                <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
+                    <div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">\u529F\u80FD\u6309\u94AE</div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            ${toggleItems.map((item) => `
+                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || "disabled"}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                                    <div class="default-state-choice-group">
+                                        ${this.getDefaultStateOptions(item.stateType).map((option) => `
+                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
+                                        `).join("")}
+                                    </div>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">\u5DE5\u5177\u5165\u53E3</div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            ${visibilityItems.map((item) => `
+                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || "visible"}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                                    <div class="default-state-choice-group">
+                                        ${this.getDefaultStateOptions(item.stateType).map((option) => `
+                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
+                                        `).join("")}
+                                    </div>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button class="default-states-save-btn" style="flex: 1; padding: 8px 10px; background: #fe2c55; color: white; border: none; border-radius: 6px; cursor: pointer;">\u4FDD\u5B58</button>
@@ -1253,20 +1371,19 @@
       dialog.querySelector(".default-states-cancel-btn").addEventListener("click", closeDialog);
       dialog.querySelector(".default-states-save-btn").addEventListener("click", () => {
         const nextStates = {};
-        dialog.querySelectorAll("[data-default-key]").forEach((input) => {
-          nextStates[input.dataset.defaultKey] = input.checked;
+        dialog.querySelectorAll(".default-state-row").forEach((row) => {
+          nextStates[row.dataset.defaultKey] = row.dataset.currentState;
         });
         this.config.saveDefaultEnabledStates(nextStates);
-        this.notificationManager.showMessage("\u9ED8\u8BA4\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF0C\u4E0B\u6B21\u8FDB\u5165\u6296\u97F3\u65F6\u751F\u6548");
+        this.notificationManager.showMessage("\u6309\u94AE\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF0C\u5237\u65B0\u540E\u751F\u6548");
         closeDialog();
       });
-      dialog.querySelectorAll("[data-default-key]").forEach((input) => {
-        input.addEventListener("change", () => {
-          var _a;
-          const label = (_a = input.closest("label")) == null ? void 0 : _a.querySelector(".default-state-status");
-          if (label) {
-            label.textContent = input.checked ? "\u9ED8\u8BA4\u5F00" : "\u9ED8\u8BA4\u5173";
-          }
+      dialog.querySelectorAll(".default-state-row").forEach((row) => {
+        this.applyDefaultStateSelection(row, row.dataset.currentState);
+        row.querySelectorAll(".default-state-choice").forEach((choice) => {
+          choice.addEventListener("click", () => {
+            this.applyDefaultStateSelection(row, choice.dataset.stateValue);
+          });
         });
       });
       setTimeout(() => {
@@ -2481,6 +2598,9 @@
                     display: inline-block !important;
                     margin: -12px 0 !important;
                 }
+                .xg-right-grid xg-icon.xgplayer-autoplay-setting {
+                    margin-left: 2px !important;
+                }
 
                 /* \u9632\u6B62\u7236\u5BB9\u5668\u9650\u5236\u9AD8\u5EA6\u5BFC\u81F4\u5185\u5BB9\u88AB\u88C1\u526A */
                 .xgplayer-controls {
@@ -2514,6 +2634,35 @@
                     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
                     transform: translateY(-1px);
                 }
+                .default-state-choice-group {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                }
+                .default-state-choice {
+                    padding: 5px 10px;
+                    border-radius: 999px;
+                    border: 1px solid rgba(255, 255, 255, 0.16);
+                    background: rgba(255, 255, 255, 0.05);
+                    color: rgba(255, 255, 255, 0.76);
+                    font-size: 12px;
+                    line-height: 1;
+                    cursor: pointer;
+                    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+                }
+                .default-state-choice:hover {
+                    border-color: rgba(255, 255, 255, 0.28);
+                    background: rgba(255, 255, 255, 0.09);
+                    color: rgba(255, 255, 255, 0.92);
+                }
+                .default-state-choice.is-selected {
+                    border-color: rgba(254, 44, 85, 0.65);
+                    background: rgba(254, 44, 85, 0.16);
+                    color: #ffffff;
+                    box-shadow: 0 0 0 1px rgba(254, 44, 85, 0.18);
+                }
 
                 /* \u9632\u6B62\u6807\u9898\u88AB\u56FE\u6807\u906E\u6321 */
                 .xgplayer-setting-label {
@@ -2527,13 +2676,12 @@
                 /* \u81EA\u5B9A\u4E49\u5F00\u5173\uFF0C\u907F\u514D\u88AB\u64AD\u653E\u5668\u539F\u751F xg-switch \u72B6\u6001\u5E72\u6270 */
                 .dy-enhancer-switch {
                     position: relative;
-                    width: 28px;
-                    min-width: 28px;
-                    height: 16px;
+                    width: 24px;
+                    min-width: 24px;
+                    height: 14px;
                     padding: 0;
                     border: none;
                     border-radius: 999px;
-                    background: rgba(255, 255, 255, 0.28);
                     cursor: pointer;
                     transition: background 0.18s ease, box-shadow 0.18s ease;
                 }
@@ -2547,14 +2695,14 @@
                     position: absolute;
                     top: 2px;
                     left: 2px;
-                    width: 12px;
-                    height: 12px;
+                    width: 10px;
+                    height: 10px;
                     border-radius: 50%;
                     background: #ffffff;
                     transition: transform 0.18s ease;
                 }
                 .dy-enhancer-switch.is-checked .dy-enhancer-switch-inner {
-                    transform: translateX(12px);
+                    transform: translateX(10px);
                 }
 
 

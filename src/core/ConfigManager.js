@@ -1,6 +1,19 @@
 export class ConfigManager {
         constructor() {
-            this.defaultEnabledStates = this.loadDefaultEnabledStates();
+            this.defaultToggleStatesFallback = {
+                skipLive: 'enabled',
+                skipAd: 'enabled',
+                blockKeywords: 'enabled',
+                autoHighRes: 'enabled',
+                onlyResolution: 'disabled',
+                aiPreference: 'disabled',
+                speedMode: 'disabled'
+            };
+            this.defaultVisibilityStatesFallback = {
+                statsSummary: 'visible'
+            };
+            this.defaultButtonStates = this.loadDefaultButtonStates();
+            this.sessionButtonStates = { ...this.defaultButtonStates };
             this.config = {
                 skipLive: { enabled: this.getDefaultEnabledState('skipLive'), key: 'skipLive' },
                 autoHighRes: { enabled: this.getDefaultEnabledState('autoHighRes'), key: 'autoHighRes' },
@@ -42,17 +55,7 @@ export class ConfigManager {
             };
         }
 
-        loadDefaultEnabledStates() {
-            const fallback = {
-                skipLive: true,
-                skipAd: true,
-                blockKeywords: true,
-                autoHighRes: true,
-                onlyResolution: false,
-                aiPreference: false,
-                speedMode: false
-            };
-
+        loadDefaultButtonStates() {
             let savedStates = {};
             try {
                 savedStates = JSON.parse(localStorage.getItem('douyin_default_toggle_states') || '{}');
@@ -60,18 +63,72 @@ export class ConfigManager {
                 savedStates = {};
             }
 
-            return Object.keys(fallback).reduce((states, key) => {
-                states[key] = typeof savedStates[key] === 'boolean' ? savedStates[key] : fallback[key];
-                return states;
-            }, {});
+            const states = {};
+            Object.keys(this.defaultToggleStatesFallback).forEach(key => {
+                states[key] = this.normalizeDefaultButtonState(key, savedStates[key]);
+            });
+            Object.keys(this.defaultVisibilityStatesFallback).forEach(key => {
+                states[key] = this.normalizeDefaultButtonState(key, savedStates[key]);
+            });
+            return states;
+        }
+
+        isToggleButtonStateKey(key) {
+            return key in this.defaultToggleStatesFallback;
+        }
+
+        isVisibilityButtonStateKey(key) {
+            return key in this.defaultVisibilityStatesFallback;
+        }
+
+        normalizeDefaultButtonState(key, value) {
+            if (this.isToggleButtonStateKey(key)) {
+                if (value === 'enabled' || value === 'disabled' || value === 'hidden') {
+                    return value;
+                }
+                if (typeof value === 'boolean') {
+                    return value ? 'enabled' : 'disabled';
+                }
+                return this.defaultToggleStatesFallback[key];
+            }
+
+            if (this.isVisibilityButtonStateKey(key)) {
+                if (value === 'visible' || value === 'hidden') {
+                    return value;
+                }
+                if (typeof value === 'boolean') {
+                    return value ? 'visible' : 'hidden';
+                }
+                return this.defaultVisibilityStatesFallback[key];
+            }
+
+            return value;
         }
 
         getDefaultEnabledState(key) {
-            return this.defaultEnabledStates[key] ?? false;
+            return this.sessionButtonStates[key] === 'enabled';
+        }
+
+        getDefaultButtonStates() {
+            return { ...this.defaultButtonStates };
+        }
+
+        isButtonVisibleInCurrentSession(key) {
+            const state = this.sessionButtonStates[key];
+            if (this.isToggleButtonStateKey(key)) {
+                return state !== 'hidden';
+            }
+            if (this.isVisibilityButtonStateKey(key)) {
+                return state === 'visible';
+            }
+            return true;
         }
 
         getDefaultEnabledStates() {
-            return { ...this.defaultEnabledStates };
+            return Object.keys(this.defaultToggleStatesFallback).reduce((states, key) => {
+                states[key] = this.defaultButtonStates[key] === 'enabled';
+                return states;
+            }, {});
         }
 
         loadKeywords() {
@@ -221,20 +278,20 @@ export class ConfigManager {
         }
 
         saveDefaultEnabledState(key, enabled) {
-            if (!(key in this.defaultEnabledStates)) {
+            if (!this.isToggleButtonStateKey(key)) {
                 return;
             }
-            this.defaultEnabledStates[key] = Boolean(enabled);
-            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultEnabledStates));
+            this.defaultButtonStates[key] = enabled ? 'enabled' : 'disabled';
+            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultButtonStates));
         }
 
         saveDefaultEnabledStates(states) {
-            Object.keys(this.defaultEnabledStates).forEach(key => {
-                if (typeof states[key] === 'boolean') {
-                    this.defaultEnabledStates[key] = states[key];
+            Object.keys(states).forEach(key => {
+                if (this.isToggleButtonStateKey(key) || this.isVisibilityButtonStateKey(key)) {
+                    this.defaultButtonStates[key] = this.normalizeDefaultButtonState(key, states[key]);
                 }
             });
-            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultEnabledStates));
+            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultButtonStates));
         }
 
         get(key) {

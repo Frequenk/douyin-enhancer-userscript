@@ -97,6 +97,9 @@ export class DouyinEnhancer {
                     display: inline-block !important;
                     margin: -12px 0 !important;
                 }
+                .xg-right-grid xg-icon.xgplayer-autoplay-setting {
+                    margin-left: 2px !important;
+                }
 
                 /* 防止父容器限制高度导致内容被裁剪 */
                 .xgplayer-controls {
@@ -130,6 +133,35 @@ export class DouyinEnhancer {
                     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
                     transform: translateY(-1px);
                 }
+                .default-state-choice-group {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                }
+                .default-state-choice {
+                    padding: 5px 10px;
+                    border-radius: 999px;
+                    border: 1px solid rgba(255, 255, 255, 0.16);
+                    background: rgba(255, 255, 255, 0.05);
+                    color: rgba(255, 255, 255, 0.76);
+                    font-size: 12px;
+                    line-height: 1;
+                    cursor: pointer;
+                    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+                }
+                .default-state-choice:hover {
+                    border-color: rgba(255, 255, 255, 0.28);
+                    background: rgba(255, 255, 255, 0.09);
+                    color: rgba(255, 255, 255, 0.92);
+                }
+                .default-state-choice.is-selected {
+                    border-color: rgba(254, 44, 85, 0.65);
+                    background: rgba(254, 44, 85, 0.16);
+                    color: #ffffff;
+                    box-shadow: 0 0 0 1px rgba(254, 44, 85, 0.18);
+                }
 
                 /* 防止标题被图标遮挡 */
                 .xgplayer-setting-label {
@@ -143,13 +175,12 @@ export class DouyinEnhancer {
                 /* 自定义开关，避免被播放器原生 xg-switch 状态干扰 */
                 .dy-enhancer-switch {
                     position: relative;
-                    width: 28px;
-                    min-width: 28px;
-                    height: 16px;
+                    width: 24px;
+                    min-width: 24px;
+                    height: 14px;
                     padding: 0;
                     border: none;
                     border-radius: 999px;
-                    background: rgba(255, 255, 255, 0.28);
                     cursor: pointer;
                     transition: background 0.18s ease, box-shadow 0.18s ease;
                 }
@@ -163,14 +194,14 @@ export class DouyinEnhancer {
                     position: absolute;
                     top: 2px;
                     left: 2px;
-                    width: 12px;
-                    height: 12px;
+                    width: 10px;
+                    height: 10px;
                     border-radius: 50%;
                     background: #ffffff;
                     transition: transform 0.18s ease;
                 }
                 .dy-enhancer-switch.is-checked .dy-enhancer-switch-inner {
-                    transform: translateX(12px);
+                    transform: translateX(10px);
                 }
 
 
