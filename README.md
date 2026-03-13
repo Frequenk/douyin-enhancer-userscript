@@ -8,7 +8,7 @@
 
 ## 📸 效果预览
 
-![功能面板截图](https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/screenshot.png)
+![功能面板截图](https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/screenshot-1.png)
 
 ## ✨ 核心功能
 
