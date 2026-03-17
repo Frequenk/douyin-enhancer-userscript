@@ -1,4 +1,4 @@
-// ==UserScript==
+﻿// ==UserScript==
 // @name 网页抖音体验增强
 // @namespace Violentmonkey Scripts
 // @match https://www.douyin.com/?*
@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.0
-// @changelog 新增按钮设置三态配置，支持功能按钮显隐与默认状态控制，支持统计胶囊显示/隐藏；
+// @version 4.1
+// @changelog 新增直播页工具栏“最高清”开关，支持 live.douyin.com 与 /root/live/* 自动切换最高画质，并兼容站内无刷新进入直播间；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -2565,6 +2565,9 @@
       });
       setInterval(() => this.mainLoop(), 300);
     }
+    shouldSkipCurrentPage() {
+      return window.location.hostname === "live.douyin.com" || window.location.hostname === "www.douyin.com" && (window.location.pathname.startsWith("/root/live/") || window.location.pathname.startsWith("/video/") || window.location.pathname.startsWith("/lvdetail/"));
+    }
     assignSpeedModeDuration(isNewVideo) {
       const speedConfig = this.config.get("speedMode");
       if (!this.config.isEnabled("speedMode")) {
@@ -2710,6 +2713,9 @@
       document.head.appendChild(style);
     }
     mainLoop() {
+      if (this.shouldSkipCurrentPage()) {
+        return;
+      }
       this.statsTracker.maybeRollOver().catch(() => {
       });
       this.uiManager.insertButtons();
@@ -2833,6 +2839,364 @@
     }
   };
 
+  // src/app/LiveEnhancer.js
+  var STYLE_ID = "dy-live-enhancer-style";
+  var BUTTON_SLOT_CLASS = "dy-live-auto-high-res-slot";
+  var BUTTON_CONTAINER_CLASS = "dy-live-auto-high-res-item";
+  var BUTTON_CLASS = "dy-live-auto-high-res-button";
+  var LOOP_INTERVAL_MS = 500;
+  var MENU_RETRY_INTERVAL_MS = 1500;
+  var APPLY_DELAY_MS = 300;
+  var LIVE_PLAYER_SELECTORS = [
+    '[data-anchor-id="living-basic-player"]',
+    '[data-e2e="living-container"] #PlayerLayout .__livingPlayer__',
+    '[data-e2e="living-container"]'
+  ];
+  var TOOLBAR_SELECTORS = [
+    ".douyin-player-controls-right",
+    "#PlayerControlLayout .douyin-player-controls-right",
+    '#PlayerControlLayout [class*="player-controls-right"]',
+    "#TipsLayout #control-right",
+    "#control-right"
+  ];
+  var QUALITY_PLUGIN_SELECTOR = ".QualitySwitchNewPlugin";
+  var QUALITY_TRIGGER_SELECTOR = '[data-e2e="quality"]';
+  var QUALITY_OPTION_SELECTORS = [
+    '[data-e2e="quality-selector"] .J1oLRAwo',
+    '[data-e2e="quality-selector"] .L5MQ4Qvg .yaQJImEq',
+    '[data-e2e="quality-selector"] .L5MQ4Qvg'
+  ];
+  var QUALITY_TEXT_SELECTORS = [".xMYYJi25", ".IUilDqvc"];
+  var PRIORITY_ORDER = ["\u539F\u753B", "\u84DD\u5149", "\u8D85\u6E05", "\u9AD8\u6E05", "\u6807\u6E05"];
+  var LiveEnhancer = class {
+    constructor() {
+      this.notificationManager = new NotificationManager();
+      this.isAutoHighResEnabled = true;
+      this.lastTriggerAttemptAt = 0;
+      this.autoApplyReadyAt = Date.now() + APPLY_DELAY_MS;
+      this.init();
+    }
+    init() {
+      this.injectStyles();
+      setInterval(() => this.mainLoop(), LOOP_INTERVAL_MS);
+    }
+    mainLoop() {
+      if (!this.isSupportedLivePage()) {
+        return;
+      }
+      this.injectStyles();
+      this.insertButton();
+      this.syncButtonState();
+      this.applyHighestResolution();
+    }
+    isSupportedLivePage() {
+      return window.location.hostname === "live.douyin.com" || window.location.hostname === "www.douyin.com" && window.location.pathname.startsWith("/root/live/");
+    }
+    injectStyles() {
+      if (document.getElementById(STYLE_ID) || !document.head) {
+        return;
+      }
+      const style = document.createElement("style");
+      style.id = STYLE_ID;
+      style.textContent = `
+            .${BUTTON_SLOT_CLASS} {
+                display: flex;
+                align-items: center;
+            }
+
+            .${BUTTON_CONTAINER_CLASS} {
+                display: flex;
+                align-items: center;
+                margin-right: 8px;
+                position: relative;
+                z-index: 20;
+                pointer-events: auto;
+            }
+
+
+
+            .${BUTTON_CONTAINER_CLASS} .dy-live-toolbar-core {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 0;
+                cursor: pointer;
+                user-select: none;
+                pointer-events: auto;
+            }
+
+            .${BUTTON_CONTAINER_CLASS} .dy-live-toolbar-label {
+                color: rgba(255, 255, 255, 0.92);
+                font-size: 13px;
+                line-height: 1;
+                white-space: nowrap;
+            }
+
+            .${BUTTON_CONTAINER_CLASS} .dy-enhancer-switch {
+                position: relative;
+                width: 24px;
+                min-width: 24px;
+                height: 14px;
+                padding: 0;
+                border: none;
+                border-radius: 999px;
+                cursor: pointer;
+                background: rgba(255, 255, 255, 0.26);
+                transition: background 0.18s ease, box-shadow 0.18s ease;
+            }
+
+            .${BUTTON_CONTAINER_CLASS} .dy-enhancer-switch.is-checked {
+                background: #fe2c55;
+            }
+
+            .${BUTTON_CONTAINER_CLASS} .dy-enhancer-switch-inner {
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: #ffffff;
+                transition: transform 0.18s ease;
+            }
+
+            .${BUTTON_CONTAINER_CLASS} .dy-enhancer-switch.is-checked .dy-enhancer-switch-inner {
+                transform: translateX(10px);
+            }
+        `;
+      document.head.appendChild(style);
+    }
+    insertButton() {
+      var _a;
+      const playerRoot = this.getLivePlayerRoot();
+      const toolbar = this.findToolbarContainer(playerRoot);
+      if (!toolbar) {
+        return;
+      }
+      let slot = toolbar.querySelector(`.${BUTTON_SLOT_CLASS}`);
+      if (!slot) {
+        slot = this.createButton();
+      }
+      const qualityAnchor = (_a = this.queryWithinPlayer(playerRoot, QUALITY_PLUGIN_SELECTOR)) == null ? void 0 : _a.closest("slot");
+      if (qualityAnchor && qualityAnchor.parentNode === toolbar) {
+        if (slot.parentNode !== toolbar || slot.nextSibling !== qualityAnchor) {
+          toolbar.insertBefore(slot, qualityAnchor);
+        }
+        return;
+      }
+      if (slot.parentNode !== toolbar) {
+        toolbar.appendChild(slot);
+      }
+    }
+    getLivePlayerRoot() {
+      for (const selector of LIVE_PLAYER_SELECTORS) {
+        const node = document.querySelector(selector);
+        if (node instanceof HTMLElement) {
+          return node;
+        }
+      }
+      return null;
+    }
+    findToolbarContainer(playerRoot) {
+      const qualityPlugin = this.queryWithinPlayer(playerRoot, QUALITY_PLUGIN_SELECTOR);
+      const qualityToolbar = qualityPlugin == null ? void 0 : qualityPlugin.closest(".douyin-player-controls-right");
+      if (qualityToolbar instanceof HTMLElement) {
+        return qualityToolbar;
+      }
+      const trigger = this.queryWithinPlayer(playerRoot, QUALITY_TRIGGER_SELECTOR);
+      const triggerToolbar = trigger == null ? void 0 : trigger.closest(".douyin-player-controls-right");
+      if (triggerToolbar instanceof HTMLElement) {
+        return triggerToolbar;
+      }
+      const root = playerRoot || document;
+      for (const selector of TOOLBAR_SELECTORS) {
+        const node = root.querySelector(selector);
+        if (node instanceof HTMLElement) {
+          return node;
+        }
+      }
+      return null;
+    }
+    createButton() {
+      const slot = document.createElement("slot");
+      slot.className = BUTTON_SLOT_CLASS;
+      slot.setAttribute("data-index", "8.5");
+      slot.innerHTML = `
+            <div class="Z4vrjOCq ${BUTTON_CONTAINER_CLASS}">
+
+                <div class="dy-live-toolbar-core">
+                    <button type="button" aria-checked="true" class="dy-enhancer-switch is-checked ${BUTTON_CLASS}">
+                        <span class="dy-enhancer-switch-inner"></span>
+                    </button>
+                    <span class="dy-live-toolbar-label">\u6700\u9AD8\u6E05</span>
+                </div>
+            </div>
+        `;
+      const toggle = () => {
+        this.isAutoHighResEnabled = !this.isAutoHighResEnabled;
+        this.lastTriggerAttemptAt = 0;
+        this.autoApplyReadyAt = this.isAutoHighResEnabled ? Date.now() + APPLY_DELAY_MS : 0;
+        this.syncButtonState();
+        this.notificationManager.showMessage(`\u76F4\u64AD\u5206\u8FA8\u7387\uFF1A\u6700\u9AD8\u6E05\u5DF2${this.isAutoHighResEnabled ? "\u5F00\u542F" : "\u5173\u95ED"}`);
+      };
+      const toolbarCore = slot.querySelector(".dy-live-toolbar-core");
+      const stopPointerEvent = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+      };
+      ["pointerdown", "mousedown", "mouseup"].forEach((eventName) => {
+        toolbarCore.addEventListener(eventName, stopPointerEvent);
+      });
+      toolbarCore.addEventListener("click", (event) => {
+        stopPointerEvent(event);
+        toggle();
+      });
+      return slot;
+    }
+    syncButtonState() {
+      document.querySelectorAll(`.${BUTTON_CONTAINER_CLASS} .${BUTTON_CLASS}`).forEach((button) => {
+        button.classList.toggle("is-checked", this.isAutoHighResEnabled);
+        button.setAttribute("aria-checked", String(this.isAutoHighResEnabled));
+      });
+    }
+    applyHighestResolution() {
+      if (!this.isAutoHighResEnabled) {
+        return;
+      }
+      if (Date.now() < this.autoApplyReadyAt) {
+        return;
+      }
+      const playerRoot = this.getLivePlayerRoot();
+      const currentQuality = this.getCurrentQualityLabel(playerRoot);
+      const options = this.getQualityOptions(playerRoot);
+      if (options.length === 0) {
+        this.tryOpenQualityMenu(playerRoot);
+        return;
+      }
+      const bestOption = options[0];
+      if (currentQuality && currentQuality === bestOption.label) {
+        this.disableAutoHighRes(`\u{1F4FA} \u76F4\u64AD\u5206\u8FA8\u7387\uFF1A\u5DF2\u662F\u6700\u9AD8\u6863 ${bestOption.label}`);
+        return;
+      }
+      bestOption.element.click();
+      this.disableAutoHighRes(`\u{1F4FA} \u76F4\u64AD\u5206\u8FA8\u7387\uFF1A\u5DF2\u5207\u6362\u81F3\u6700\u9AD8\u6863 ${bestOption.label}`);
+    }
+    disableAutoHighRes(message) {
+      this.isAutoHighResEnabled = false;
+      this.autoApplyReadyAt = 0;
+      this.syncButtonState();
+      this.notificationManager.showMessage(message);
+      this.notificationManager.showMessage("\u{1F4FA} \u76F4\u64AD\u5206\u8FA8\u7387\uFF1A\u5DF2\u5B8C\u6210\u8BBE\u7F6E\uFF0C\u81EA\u52A8\u5207\u6362\u5DF2\u5173\u95ED");
+    }
+    getCurrentQualityLabel(playerRoot) {
+      const trigger = this.queryWithinPlayer(playerRoot, QUALITY_TRIGGER_SELECTOR);
+      return this.normalizeQualityLabel((trigger == null ? void 0 : trigger.textContent) || "");
+    }
+    getQualityOptions(playerRoot) {
+      const root = playerRoot || document;
+      const optionMap = /* @__PURE__ */ new Map();
+      QUALITY_OPTION_SELECTORS.forEach((selector) => {
+        root.querySelectorAll(selector).forEach((element) => {
+          const label = this.normalizeQualityLabel(this.extractQualityLabel(element));
+          const priority = PRIORITY_ORDER.indexOf(label);
+          if (priority === -1) {
+            return;
+          }
+          optionMap.set(label, {
+            element,
+            label,
+            priority
+          });
+        });
+      });
+      return Array.from(optionMap.values()).sort((a, b) => a.priority - b.priority);
+    }
+    tryOpenQualityMenu(playerRoot) {
+      const now = Date.now();
+      if (now - this.lastTriggerAttemptAt < MENU_RETRY_INTERVAL_MS) {
+        return;
+      }
+      const plugin = this.queryWithinPlayer(playerRoot, QUALITY_PLUGIN_SELECTOR);
+      const trigger = this.queryWithinPlayer(playerRoot, QUALITY_TRIGGER_SELECTOR);
+      if (!plugin || !trigger) {
+        return;
+      }
+      plugin.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      plugin.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      trigger.click();
+      this.lastTriggerAttemptAt = now;
+    }
+    normalizeQualityLabel(text) {
+      return String(text || "").replace(/\s+/g, "").trim();
+    }
+    extractQualityLabel(element) {
+      var _a;
+      for (const selector of QUALITY_TEXT_SELECTORS) {
+        const node = element.querySelector(selector);
+        if ((_a = node == null ? void 0 : node.textContent) == null ? void 0 : _a.trim()) {
+          return node.textContent;
+        }
+      }
+      return element.textContent || "";
+    }
+    queryWithinPlayer(playerRoot, selector) {
+      return (playerRoot || document).querySelector(selector);
+    }
+  };
+
   // src/index.js
-  new DouyinEnhancer();
+  var douyinEnhancer = null;
+  var liveEnhancer = null;
+  var lastRouteKey = "";
+  function isDouyinLivePage(location) {
+    return location.hostname === "live.douyin.com" || location.hostname === "www.douyin.com" && location.pathname.startsWith("/root/live/");
+  }
+  function isExcludedPage(location) {
+    if (location.hostname !== "www.douyin.com") {
+      return false;
+    }
+    return location.pathname.startsWith("/video/") || location.pathname.startsWith("/lvdetail/");
+  }
+  function getRouteKey(location) {
+    return `${location.hostname}${location.pathname}`;
+  }
+  function ensureEnhancerForCurrentRoute() {
+    const routeKey = getRouteKey(window.location);
+    if (routeKey === lastRouteKey) {
+      return;
+    }
+    lastRouteKey = routeKey;
+    if (isDouyinLivePage(window.location)) {
+      if (!liveEnhancer) {
+        liveEnhancer = new LiveEnhancer();
+      }
+      return;
+    }
+    if (!isExcludedPage(window.location) && !douyinEnhancer) {
+      douyinEnhancer = new DouyinEnhancer();
+    }
+  }
+  function notifyRouteChange() {
+    window.dispatchEvent(new CustomEvent("douyin-enhancer-route-change", {
+      detail: {
+        hostname: window.location.hostname,
+        pathname: window.location.pathname
+      }
+    }));
+  }
+  function patchHistoryMethod(methodName) {
+    const original = window.history[methodName];
+    window.history[methodName] = function(...args) {
+      const result = original.apply(this, args);
+      notifyRouteChange();
+      return result;
+    };
+  }
+  patchHistoryMethod("pushState");
+  patchHistoryMethod("replaceState");
+  window.addEventListener("popstate", notifyRouteChange);
+  window.addEventListener("douyin-enhancer-route-change", ensureEnhancerForCurrentRoute);
+  ensureEnhancerForCurrentRoute();
 })();

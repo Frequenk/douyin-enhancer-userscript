@@ -1,4 +1,4 @@
-# 🎬 网页抖音体验增强
+﻿# 🎬 网页抖音体验增强
 
 [![Greasy Fork](https://img.shields.io/greasyfork/v/539942?label=Greasy%20Fork&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/539942)
 [![GitHub stars](https://img.shields.io/github/stars/Frequenk/douyin-enhancer-userscript?style=flat&logo=github&label=Stars&color=white)](https://github.com/Frequenk/douyin-enhancer-userscript/stargazers)
@@ -30,6 +30,7 @@
 |------|------|
 | 🔝 自动最高分辨率 | 智能选择当前视频可用的最高分辨率 (4K > 2K > 1080P...) |
 | 🔒 锁定4K | 找到4K视频后可自动关闭此功能，避免不必要的切换 |
+| 📡 直播最高清 | 在 `live.douyin.com` 和 `www.douyin.com/root/live/*` 直播页工具栏提供“最高清”开关，自动切到可用最高画质后自动关闭 |
 | ⚙️ 分辨率筛选 | 只观看指定分辨率的视频，不符合的自动跳过 |
 
 ### 4. 🤖 AI智能筛选
@@ -81,6 +82,7 @@
 3. 点击工具栏里的“设置”胶囊，可统一配置功能按钮和统计胶囊的显示状态与默认值
 4. 点击各项功能的**标题文字**，即可打开专属设置弹窗
 5. 所有设置自动保存在浏览器本地
+6. 进入 `live.douyin.com` 或从普通视频流无刷新点进 `www.douyin.com/root/live/*` 时，直播页工具栏会出现“最高清”开关
 
 ### ⌨️ 快捷键
 
@@ -180,3 +182,4 @@ launchctl setenv OLLAMA_ORIGINS "*"
 如果这个脚本对你有帮助，请：
 - 在 [Greasy Fork](https://greasyfork.org/zh-CN/scripts/539942) 点个好评 👍
 - 在 [GitHub](https://github.com/Frequenk/douyin-enhancer-userscript) 给个 Star ⭐
+

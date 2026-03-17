@@ -1,4 +1,4 @@
-import { NotificationManager } from '../core/NotificationManager.js';
+﻿import { NotificationManager } from '../core/NotificationManager.js';
 import { ConfigManager } from '../core/ConfigManager.js';
 import { VideoController } from '../core/VideoController.js';
 import { UIManager } from '../ui/UIManager.js';
@@ -59,6 +59,14 @@ export class DouyinEnhancer {
             });
 
             setInterval(() => this.mainLoop(), 300);
+        }
+
+        shouldSkipCurrentPage() {
+            return window.location.hostname === 'live.douyin.com'
+                || (window.location.hostname === 'www.douyin.com'
+                    && (window.location.pathname.startsWith('/root/live/')
+                        || window.location.pathname.startsWith('/video/')
+                        || window.location.pathname.startsWith('/lvdetail/')));
         }
 
         assignSpeedModeDuration(isNewVideo) {
@@ -210,6 +218,9 @@ export class DouyinEnhancer {
         }
 
         mainLoop() {
+            if (this.shouldSkipCurrentPage()) {
+                return;
+            }
             this.statsTracker.maybeRollOver().catch(() => {});
             this.uiManager.insertButtons();
 
@@ -348,3 +359,4 @@ export class DouyinEnhancer {
     }
 
     // 启动应用
+
