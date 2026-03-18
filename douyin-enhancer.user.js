@@ -1,4 +1,4 @@
-﻿// ==UserScript==
+// ==UserScript==
 // @name 网页抖音体验增强
 // @namespace Violentmonkey Scripts
 // @match https://www.douyin.com/?*
@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.1
-// @changelog 新增直播页工具栏“最高清”开关，支持 live.douyin.com 与 /root/live/* 自动切换最高画质，并兼容站内无刷新进入直播间；
+// @version 4.2
+// @changelog 优化“设置”面板：按钮默认状态改为“默认开关 + 眼睛显隐”，隐藏时自动关闭默认开关，并增加悬停提示；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -1259,25 +1259,87 @@
         stateType: config.defaultStateType
       }));
     }
-    getDefaultStateOptions(stateType) {
-      if (stateType === "visibility") {
-        return [
-          { value: "visible", label: "\u663E\u793A" },
-          { value: "hidden", label: "\u9690\u85CF" }
-        ];
-      }
-      return [
-        { value: "enabled", label: "\u663E\u793A + \u9ED8\u8BA4\u5F00\u542F" },
-        { value: "disabled", label: "\u663E\u793A + \u9ED8\u8BA4\u5173\u95ED" },
-        { value: "hidden", label: "\u9690\u85CF + \u9ED8\u8BA4\u5173\u95ED" }
-      ];
+    parseDefaultToggleState(state) {
+      return {
+        visible: state !== "hidden",
+        enabled: state === "enabled"
+      };
     }
-    applyDefaultStateSelection(row, nextState) {
-      row.dataset.currentState = nextState;
-      row.querySelectorAll(".default-state-choice").forEach((choice) => {
-        const isSelected = choice.dataset.stateValue === nextState;
-        choice.classList.toggle("is-selected", isSelected);
-      });
+    getEyeIconSvg(isVisible) {
+      if (isVisible) {
+        return `
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6-10-6-10-6Z"></path>
+                        <circle cx="12" cy="12" r="2.8"></circle>
+                    </svg>
+                `;
+      }
+      return `
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M3 3l18 18"></path>
+                    <path d="M10.6 6.4A11.8 11.8 0 0 1 12 6c6.2 0 10 6 10 6a17.6 17.6 0 0 1-4.1 4.5"></path>
+                    <path d="M6.5 6.8A17.9 17.9 0 0 0 2 12s3.8 6 10 6c1.4 0 2.6-.3 3.8-.8"></path>
+                    <path d="M9.9 9.9A3 3 0 0 0 9 12c0 1.7 1.3 3 3 3 .8 0 1.5-.3 2.1-.9"></path>
+                </svg>
+            `;
+    }
+    getDefaultToggleRowHtml(item, currentState) {
+      const { visible, enabled } = this.parseDefaultToggleState(currentState || "disabled");
+      const hoverTip = UIFactory.escapeHtml("\u60F3\u8981\u9ED8\u8BA4\u542F\u7528\uFF0C\u8BF7\u5148\u5C55\u793A\u6309\u94AE");
+      return `
+                <div class="default-state-row default-state-row-toggle" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${currentState || "disabled"}" data-visible="${visible}" data-enabled="${enabled}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                    <div class="default-state-controls">
+                        <button type="button" class="default-state-master-switch ${enabled ? "is-checked" : ""} ${visible ? "" : "is-locked"}" aria-checked="${enabled}" aria-disabled="${!visible}" data-hover-tip="${hoverTip}">
+                            <span class="default-state-master-switch-inner"></span>
+                        </button>
+                        <button type="button" class="default-state-eye-button ${visible ? "is-active" : ""}" aria-pressed="${visible}" title="${visible ? "\u9690\u85CF\u6309\u94AE" : "\u663E\u793A\u6309\u94AE"}">
+                            ${this.getEyeIconSvg(visible)}
+                        </button>
+                    </div>
+                </div>
+            `;
+    }
+    getDefaultVisibilityRowHtml(item, currentState) {
+      const isVisible = (currentState || "visible") === "visible";
+      return `
+                <div class="default-state-row default-state-row-visibility" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${isVisible ? "visible" : "hidden"}" data-visible="${isVisible}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                    <button type="button" class="default-state-eye-button ${isVisible ? "is-active" : ""}" aria-pressed="${isVisible}" title="${isVisible ? "\u9690\u85CF\u6309\u94AE" : "\u663E\u793A\u6309\u94AE"}">
+                        ${this.getEyeIconSvg(isVisible)}
+                    </button>
+                </div>
+            `;
+    }
+    syncToggleDefaultStateRow(row) {
+      const visible = row.dataset.visible === "true";
+      const enabled = visible && row.dataset.enabled === "true";
+      row.dataset.currentState = visible ? enabled ? "enabled" : "disabled" : "hidden";
+      const switchButton = row.querySelector(".default-state-master-switch");
+      if (switchButton) {
+        switchButton.classList.toggle("is-checked", enabled);
+        switchButton.classList.toggle("is-locked", !visible);
+        switchButton.setAttribute("aria-checked", String(enabled));
+        switchButton.setAttribute("aria-disabled", String(!visible));
+      }
+      const eyeButton = row.querySelector(".default-state-eye-button");
+      if (eyeButton) {
+        eyeButton.classList.toggle("is-active", visible);
+        eyeButton.setAttribute("aria-pressed", String(visible));
+        eyeButton.setAttribute("title", visible ? "\u9690\u85CF\u6309\u94AE" : "\u663E\u793A\u6309\u94AE");
+        eyeButton.innerHTML = this.getEyeIconSvg(visible);
+      }
+    }
+    syncVisibilityDefaultStateRow(row) {
+      const visible = row.dataset.visible === "true";
+      row.dataset.currentState = visible ? "visible" : "hidden";
+      const eyeButton = row.querySelector(".default-state-eye-button");
+      if (eyeButton) {
+        eyeButton.classList.toggle("is-active", visible);
+        eyeButton.setAttribute("aria-pressed", String(visible));
+        eyeButton.setAttribute("title", visible ? "\u9690\u85CF\u6309\u94AE" : "\u663E\u793A\u6309\u94AE");
+        eyeButton.innerHTML = this.getEyeIconSvg(visible);
+      }
     }
     formatDuration(totalSeconds) {
       const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -1326,21 +1388,14 @@
                     <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">\u5173\u95ED</button>
                 </div>
                 <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-                    \u8BBE\u7F6E\u6309\u94AE\u7684\u9ED8\u8BA4\u72B6\u6001\uFF0C\u5237\u65B0\u540E\u751F\u6548\u3002
+                    \u8BBE\u7F6E\u6309\u94AE\u7684\u9ED8\u8BA4\u72B6\u6001\uFF0C\u5237\u65B0\u540E\u751F\u6548\u3002\u773C\u775B\u63A7\u5236\u662F\u5426\u663E\u793A\uFF1B\u9690\u85CF\u65F6\u4F1A\u81EA\u52A8\u5173\u95ED\u9ED8\u8BA4\u5F00\u5173\u3002
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
                     <div>
                         <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">\u529F\u80FD\u6309\u94AE</div>
                         <div style="display: flex; flex-direction: column; gap: 8px;">
                             ${toggleItems.map((item) => `
-                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || "disabled"}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                                    <span style="color: white; font-size: 13px;">${item.label}</span>
-                                    <div class="default-state-choice-group">
-                                        ${this.getDefaultStateOptions(item.stateType).map((option) => `
-                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
-                                        `).join("")}
-                                    </div>
-                                </div>
+                                ${this.getDefaultToggleRowHtml(item, defaultStates[item.key] || "disabled")}
                             `).join("")}
                         </div>
                     </div>
@@ -1348,14 +1403,7 @@
                         <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">\u5DE5\u5177\u5165\u53E3</div>
                         <div style="display: flex; flex-direction: column; gap: 8px;">
                             ${visibilityItems.map((item) => `
-                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || "visible"}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                                    <span style="color: white; font-size: 13px;">${item.label}</span>
-                                    <div class="default-state-choice-group">
-                                        ${this.getDefaultStateOptions(item.stateType).map((option) => `
-                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
-                                        `).join("")}
-                                    </div>
-                                </div>
+                                ${this.getDefaultVisibilityRowHtml(item, defaultStates[item.key] || "visible")}
                             `).join("")}
                         </div>
                     </div>
@@ -1379,11 +1427,28 @@
         closeDialog();
       });
       dialog.querySelectorAll(".default-state-row").forEach((row) => {
-        this.applyDefaultStateSelection(row, row.dataset.currentState);
-        row.querySelectorAll(".default-state-choice").forEach((choice) => {
-          choice.addEventListener("click", () => {
-            this.applyDefaultStateSelection(row, choice.dataset.stateValue);
+        var _a, _b, _c;
+        if (row.dataset.stateType === "toggle") {
+          this.syncToggleDefaultStateRow(row);
+          (_a = row.querySelector(".default-state-master-switch")) == null ? void 0 : _a.addEventListener("click", () => {
+            if (row.dataset.visible !== "true") {
+              return;
+            }
+            row.dataset.enabled = String(row.dataset.enabled !== "true");
+            this.syncToggleDefaultStateRow(row);
           });
+          (_b = row.querySelector(".default-state-eye-button")) == null ? void 0 : _b.addEventListener("click", () => {
+            const nextVisible = row.dataset.visible !== "true";
+            row.dataset.visible = String(nextVisible);
+            row.dataset.enabled = String(nextVisible ? row.dataset.enabled === "true" : false);
+            this.syncToggleDefaultStateRow(row);
+          });
+          return;
+        }
+        this.syncVisibilityDefaultStateRow(row);
+        (_c = row.querySelector(".default-state-eye-button")) == null ? void 0 : _c.addEventListener("click", () => {
+          row.dataset.visible = String(row.dataset.visible !== "true");
+          this.syncVisibilityDefaultStateRow(row);
         });
       });
       setTimeout(() => {
@@ -2637,34 +2702,115 @@
                     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
                     transform: translateY(-1px);
                 }
-                .default-state-choice-group {
+                .default-state-controls {
                     display: inline-flex;
                     align-items: center;
-                    gap: 6px;
-                    flex-wrap: wrap;
-                    justify-content: flex-end;
+                    gap: 10px;
+                    flex-shrink: 0;
                 }
-                .default-state-choice {
-                    padding: 5px 10px;
+                .default-state-master-switch {
+                    position: relative;
+                    width: 36px;
+                    min-width: 36px;
+                    height: 20px;
+                    padding: 0;
+                    border: none;
                     border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.16);
+                    cursor: pointer;
+                    transition: background 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+                }
+                .default-state-master-switch:hover {
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+                }
+                .default-state-master-switch.is-checked {
+                    background: #fe2c55;
+                }
+                .default-state-master-switch.is-locked {
+                    cursor: not-allowed;
+                    opacity: 0.48;
+                }
+                .default-state-master-switch.is-locked:hover {
+                    box-shadow: none;
+                }
+                .default-state-master-switch.is-locked:hover::after,
+                .default-state-master-switch.is-locked:focus-visible::after {
+                    content: attr(data-hover-tip);
+                    position: absolute;
+                    right: 0;
+                    bottom: calc(100% + 8px);
+                    min-width: 170px;
+                    padding: 6px 8px;
+                    border-radius: 8px;
+                    background: rgba(0, 0, 0, 0.92);
                     border: 1px solid rgba(255, 255, 255, 0.16);
-                    background: rgba(255, 255, 255, 0.05);
-                    color: rgba(255, 255, 255, 0.76);
+                    color: rgba(255, 255, 255, 0.92);
                     font-size: 12px;
-                    line-height: 1;
+                    line-height: 1.4;
+                    text-align: left;
+                    white-space: normal;
+                    z-index: 2;
+                }
+                .default-state-master-switch.is-locked:hover::before,
+                .default-state-master-switch.is-locked:focus-visible::before {
+                    content: '';
+                    position: absolute;
+                    right: 10px;
+                    bottom: calc(100% + 2px);
+                    width: 10px;
+                    height: 10px;
+                    background: rgba(0, 0, 0, 0.92);
+                    border-right: 1px solid rgba(255, 255, 255, 0.16);
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+                    transform: rotate(45deg);
+                    z-index: 1;
+                }
+                .default-state-master-switch-inner {
+                    position: absolute;
+                    top: 3px;
+                    left: 3px;
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 50%;
+                    background: #ffffff;
+                    transition: transform 0.18s ease;
+                }
+                .default-state-master-switch.is-checked .default-state-master-switch-inner {
+                    transform: translateX(16px);
+                }
+                .default-state-eye-button {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 28px;
+                    height: 28px;
+                    padding: 0;
+                    border: 1px solid rgba(255, 255, 255, 0.16);
+                    border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.04);
+                    color: rgba(255, 255, 255, 0.56);
                     cursor: pointer;
                     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
                 }
-                .default-state-choice:hover {
-                    border-color: rgba(255, 255, 255, 0.28);
+                .default-state-eye-button:hover {
                     background: rgba(255, 255, 255, 0.09);
-                    color: rgba(255, 255, 255, 0.92);
+                    border-color: rgba(255, 255, 255, 0.28);
+                    color: rgba(255, 255, 255, 0.9);
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
                 }
-                .default-state-choice.is-selected {
-                    border-color: rgba(254, 44, 85, 0.65);
-                    background: rgba(254, 44, 85, 0.16);
-                    color: #ffffff;
-                    box-shadow: 0 0 0 1px rgba(254, 44, 85, 0.18);
+                .default-state-eye-button.is-active {
+                    color: rgba(255, 255, 255, 0.92);
+                    border-color: rgba(255, 255, 255, 0.34);
+                    background: rgba(255, 255, 255, 0.1);
+                }
+                .default-state-eye-button svg {
+                    width: 16px;
+                    height: 16px;
+                    fill: none;
+                    stroke: currentColor;
+                    stroke-width: 1.8;
+                    stroke-linecap: round;
+                    stroke-linejoin: round;
                 }
 
                 /* \u9632\u6B62\u6807\u9898\u88AB\u56FE\u6807\u906E\u6321 */

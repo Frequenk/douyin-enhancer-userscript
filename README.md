@@ -1,4 +1,4 @@
-﻿# 🎬 网页抖音体验增强
+# 🎬 网页抖音体验增强
 
 [![Greasy Fork](https://img.shields.io/greasyfork/v/539942?label=Greasy%20Fork&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/539942)
 [![GitHub stars](https://img.shields.io/github/stars/Frequenk/douyin-enhancer-userscript?style=flat&logo=github&label=Stars&color=white)](https://github.com/Frequenk/douyin-enhancer-userscript/stargazers)
@@ -57,8 +57,9 @@
 ### 7. 🎛️ 按钮设置
 | 功能 | 说明 |
 |------|------|
-| 🧩 三态控制 | 可在工具栏打开“设置”弹窗，为功能按钮配置“显示 + 默认开启 / 显示 + 默认关闭 / 隐藏 + 默认关闭” |
-| 📊 入口显隐 | 统计胶囊支持单独设置为显示或隐藏 |
+| 🔘 默认开关 | 可在工具栏打开“设置”弹窗，为每个功能单独设置刷新后的默认开关状态 |
+| 👁️ 眼睛显隐 | 用眼睛图标单独控制按钮是否显示，统计胶囊等工具入口也支持单独显隐 |
+| 🛡️ 隐藏保护 | 当按钮被设为隐藏时，会自动关闭默认开关；若想默认启用，会提示先展示按钮 |
 | 🔁 刷新后生效 | 保存后不会立刻改动当前会话，刷新页面后按这里的设置生效 |
 
 ## 📦 安装
@@ -79,7 +80,7 @@
 
 1. 打开 [网页版抖音](https://www.douyin.com/)
 2. 在播放器底部可看到统一控制面板
-3. 点击工具栏里的“设置”胶囊，可统一配置功能按钮和统计胶囊的显示状态与默认值
+3. 点击工具栏里的“设置”胶囊，可统一配置功能按钮的默认开关、眼睛显隐，以及统计胶囊等入口的显示状态
 4. 点击各项功能的**标题文字**，即可打开专属设置弹窗
 5. 所有设置自动保存在浏览器本地
 6. 进入 `live.douyin.com` 或从普通视频流无刷新点进 `www.douyin.com/root/live/*` 时，直播页工具栏会出现“最高清”开关
@@ -182,4 +183,3 @@ launchctl setenv OLLAMA_ORIGINS "*"
 如果这个脚本对你有帮助，请：
 - 在 [Greasy Fork](https://greasyfork.org/zh-CN/scripts/539942) 点个好评 👍
 - 在 [GitHub](https://github.com/Frequenk/douyin-enhancer-userscript) 给个 Star ⭐
-

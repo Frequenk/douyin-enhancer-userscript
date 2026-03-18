@@ -1,4 +1,4 @@
-﻿import { NotificationManager } from '../core/NotificationManager.js';
+import { NotificationManager } from '../core/NotificationManager.js';
 import { ConfigManager } from '../core/ConfigManager.js';
 import { VideoController } from '../core/VideoController.js';
 import { UIManager } from '../ui/UIManager.js';
@@ -141,34 +141,115 @@ export class DouyinEnhancer {
                     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
                     transform: translateY(-1px);
                 }
-                .default-state-choice-group {
+                .default-state-controls {
                     display: inline-flex;
                     align-items: center;
-                    gap: 6px;
-                    flex-wrap: wrap;
-                    justify-content: flex-end;
+                    gap: 10px;
+                    flex-shrink: 0;
                 }
-                .default-state-choice {
-                    padding: 5px 10px;
+                .default-state-master-switch {
+                    position: relative;
+                    width: 36px;
+                    min-width: 36px;
+                    height: 20px;
+                    padding: 0;
+                    border: none;
                     border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.16);
+                    cursor: pointer;
+                    transition: background 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+                }
+                .default-state-master-switch:hover {
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+                }
+                .default-state-master-switch.is-checked {
+                    background: #fe2c55;
+                }
+                .default-state-master-switch.is-locked {
+                    cursor: not-allowed;
+                    opacity: 0.48;
+                }
+                .default-state-master-switch.is-locked:hover {
+                    box-shadow: none;
+                }
+                .default-state-master-switch.is-locked:hover::after,
+                .default-state-master-switch.is-locked:focus-visible::after {
+                    content: attr(data-hover-tip);
+                    position: absolute;
+                    right: 0;
+                    bottom: calc(100% + 8px);
+                    min-width: 170px;
+                    padding: 6px 8px;
+                    border-radius: 8px;
+                    background: rgba(0, 0, 0, 0.92);
                     border: 1px solid rgba(255, 255, 255, 0.16);
-                    background: rgba(255, 255, 255, 0.05);
-                    color: rgba(255, 255, 255, 0.76);
+                    color: rgba(255, 255, 255, 0.92);
                     font-size: 12px;
-                    line-height: 1;
+                    line-height: 1.4;
+                    text-align: left;
+                    white-space: normal;
+                    z-index: 2;
+                }
+                .default-state-master-switch.is-locked:hover::before,
+                .default-state-master-switch.is-locked:focus-visible::before {
+                    content: '';
+                    position: absolute;
+                    right: 10px;
+                    bottom: calc(100% + 2px);
+                    width: 10px;
+                    height: 10px;
+                    background: rgba(0, 0, 0, 0.92);
+                    border-right: 1px solid rgba(255, 255, 255, 0.16);
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+                    transform: rotate(45deg);
+                    z-index: 1;
+                }
+                .default-state-master-switch-inner {
+                    position: absolute;
+                    top: 3px;
+                    left: 3px;
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 50%;
+                    background: #ffffff;
+                    transition: transform 0.18s ease;
+                }
+                .default-state-master-switch.is-checked .default-state-master-switch-inner {
+                    transform: translateX(16px);
+                }
+                .default-state-eye-button {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 28px;
+                    height: 28px;
+                    padding: 0;
+                    border: 1px solid rgba(255, 255, 255, 0.16);
+                    border-radius: 999px;
+                    background: rgba(255, 255, 255, 0.04);
+                    color: rgba(255, 255, 255, 0.56);
                     cursor: pointer;
                     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
                 }
-                .default-state-choice:hover {
-                    border-color: rgba(255, 255, 255, 0.28);
+                .default-state-eye-button:hover {
                     background: rgba(255, 255, 255, 0.09);
-                    color: rgba(255, 255, 255, 0.92);
+                    border-color: rgba(255, 255, 255, 0.28);
+                    color: rgba(255, 255, 255, 0.9);
+                    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
                 }
-                .default-state-choice.is-selected {
-                    border-color: rgba(254, 44, 85, 0.65);
-                    background: rgba(254, 44, 85, 0.16);
-                    color: #ffffff;
-                    box-shadow: 0 0 0 1px rgba(254, 44, 85, 0.18);
+                .default-state-eye-button.is-active {
+                    color: rgba(255, 255, 255, 0.92);
+                    border-color: rgba(255, 255, 255, 0.34);
+                    background: rgba(255, 255, 255, 0.1);
+                }
+                .default-state-eye-button svg {
+                    width: 16px;
+                    height: 16px;
+                    fill: none;
+                    stroke: currentColor;
+                    stroke-width: 1.8;
+                    stroke-linecap: round;
+                    stroke-linejoin: round;
                 }
 
                 /* 防止标题被图标遮挡 */
@@ -359,4 +440,3 @@ export class DouyinEnhancer {
     }
 
     // 启动应用
-

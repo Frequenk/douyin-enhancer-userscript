@@ -651,26 +651,95 @@ export class UIFactory {
                 }));
         }
 
-        getDefaultStateOptions(stateType) {
-            if (stateType === 'visibility') {
-                return [
-                    { value: 'visible', label: '显示' },
-                    { value: 'hidden', label: '隐藏' }
-                ];
-            }
-            return [
-                { value: 'enabled', label: '显示 + 默认开启' },
-                { value: 'disabled', label: '显示 + 默认关闭' },
-                { value: 'hidden', label: '隐藏 + 默认关闭' }
-            ];
+        parseDefaultToggleState(state) {
+            return {
+                visible: state !== 'hidden',
+                enabled: state === 'enabled'
+            };
         }
 
-        applyDefaultStateSelection(row, nextState) {
-            row.dataset.currentState = nextState;
-            row.querySelectorAll('.default-state-choice').forEach(choice => {
-                const isSelected = choice.dataset.stateValue === nextState;
-                choice.classList.toggle('is-selected', isSelected);
-            });
+        getEyeIconSvg(isVisible) {
+            if (isVisible) {
+                return `
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M2 12s3.8-6 10-6 10 6 10 6-3.8 6-10 6-10-6-10-6Z"></path>
+                        <circle cx="12" cy="12" r="2.8"></circle>
+                    </svg>
+                `;
+            }
+            return `
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M3 3l18 18"></path>
+                    <path d="M10.6 6.4A11.8 11.8 0 0 1 12 6c6.2 0 10 6 10 6a17.6 17.6 0 0 1-4.1 4.5"></path>
+                    <path d="M6.5 6.8A17.9 17.9 0 0 0 2 12s3.8 6 10 6c1.4 0 2.6-.3 3.8-.8"></path>
+                    <path d="M9.9 9.9A3 3 0 0 0 9 12c0 1.7 1.3 3 3 3 .8 0 1.5-.3 2.1-.9"></path>
+                </svg>
+            `;
+        }
+
+        getDefaultToggleRowHtml(item, currentState) {
+            const { visible, enabled } = this.parseDefaultToggleState(currentState || 'disabled');
+            const hoverTip = UIFactory.escapeHtml('想要默认启用，请先展示按钮');
+            return `
+                <div class="default-state-row default-state-row-toggle" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${currentState || 'disabled'}" data-visible="${visible}" data-enabled="${enabled}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                    <div class="default-state-controls">
+                        <button type="button" class="default-state-master-switch ${enabled ? 'is-checked' : ''} ${visible ? '' : 'is-locked'}" aria-checked="${enabled}" aria-disabled="${!visible}" data-hover-tip="${hoverTip}">
+                            <span class="default-state-master-switch-inner"></span>
+                        </button>
+                        <button type="button" class="default-state-eye-button ${visible ? 'is-active' : ''}" aria-pressed="${visible}" title="${visible ? '隐藏按钮' : '显示按钮'}">
+                            ${this.getEyeIconSvg(visible)}
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        getDefaultVisibilityRowHtml(item, currentState) {
+            const isVisible = (currentState || 'visible') === 'visible';
+            return `
+                <div class="default-state-row default-state-row-visibility" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${isVisible ? 'visible' : 'hidden'}" data-visible="${isVisible}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                    <span style="color: white; font-size: 13px;">${item.label}</span>
+                    <button type="button" class="default-state-eye-button ${isVisible ? 'is-active' : ''}" aria-pressed="${isVisible}" title="${isVisible ? '隐藏按钮' : '显示按钮'}">
+                        ${this.getEyeIconSvg(isVisible)}
+                    </button>
+                </div>
+            `;
+        }
+
+        syncToggleDefaultStateRow(row) {
+            const visible = row.dataset.visible === 'true';
+            const enabled = visible && row.dataset.enabled === 'true';
+            row.dataset.currentState = visible ? (enabled ? 'enabled' : 'disabled') : 'hidden';
+
+            const switchButton = row.querySelector('.default-state-master-switch');
+            if (switchButton) {
+                switchButton.classList.toggle('is-checked', enabled);
+                switchButton.classList.toggle('is-locked', !visible);
+                switchButton.setAttribute('aria-checked', String(enabled));
+                switchButton.setAttribute('aria-disabled', String(!visible));
+            }
+
+            const eyeButton = row.querySelector('.default-state-eye-button');
+            if (eyeButton) {
+                eyeButton.classList.toggle('is-active', visible);
+                eyeButton.setAttribute('aria-pressed', String(visible));
+                eyeButton.setAttribute('title', visible ? '隐藏按钮' : '显示按钮');
+                eyeButton.innerHTML = this.getEyeIconSvg(visible);
+            }
+        }
+
+        syncVisibilityDefaultStateRow(row) {
+            const visible = row.dataset.visible === 'true';
+            row.dataset.currentState = visible ? 'visible' : 'hidden';
+
+            const eyeButton = row.querySelector('.default-state-eye-button');
+            if (eyeButton) {
+                eyeButton.classList.toggle('is-active', visible);
+                eyeButton.setAttribute('aria-pressed', String(visible));
+                eyeButton.setAttribute('title', visible ? '隐藏按钮' : '显示按钮');
+                eyeButton.innerHTML = this.getEyeIconSvg(visible);
+            }
         }
 
         formatDuration(totalSeconds) {
@@ -722,21 +791,14 @@ export class UIFactory {
                     <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">关闭</button>
                 </div>
                 <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-                    设置按钮的默认状态，刷新后生效。
+                    设置按钮的默认状态，刷新后生效。眼睛控制是否显示；隐藏时会自动关闭默认开关。
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
                     <div>
                         <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">功能按钮</div>
                         <div style="display: flex; flex-direction: column; gap: 8px;">
                             ${toggleItems.map(item => `
-                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || 'disabled'}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                                    <span style="color: white; font-size: 13px;">${item.label}</span>
-                                    <div class="default-state-choice-group">
-                                        ${this.getDefaultStateOptions(item.stateType).map(option => `
-                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
-                                        `).join('')}
-                                    </div>
-                                </div>
+                                ${this.getDefaultToggleRowHtml(item, defaultStates[item.key] || 'disabled')}
                             `).join('')}
                         </div>
                     </div>
@@ -744,14 +806,7 @@ export class UIFactory {
                         <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">工具入口</div>
                         <div style="display: flex; flex-direction: column; gap: 8px;">
                             ${visibilityItems.map(item => `
-                                <div class="default-state-row" data-default-key="${item.key}" data-state-type="${item.stateType}" data-current-state="${defaultStates[item.key] || 'visible'}" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
-                                    <span style="color: white; font-size: 13px;">${item.label}</span>
-                                    <div class="default-state-choice-group">
-                                        ${this.getDefaultStateOptions(item.stateType).map(option => `
-                                            <button type="button" class="default-state-choice" data-state-value="${option.value}">${option.label}</button>
-                                        `).join('')}
-                                    </div>
-                                </div>
+                                ${this.getDefaultVisibilityRowHtml(item, defaultStates[item.key] || 'visible')}
                             `).join('')}
                         </div>
                     </div>
@@ -779,11 +834,30 @@ export class UIFactory {
             });
 
             dialog.querySelectorAll('.default-state-row').forEach(row => {
-                this.applyDefaultStateSelection(row, row.dataset.currentState);
-                row.querySelectorAll('.default-state-choice').forEach(choice => {
-                    choice.addEventListener('click', () => {
-                        this.applyDefaultStateSelection(row, choice.dataset.stateValue);
+                if (row.dataset.stateType === 'toggle') {
+                    this.syncToggleDefaultStateRow(row);
+
+                    row.querySelector('.default-state-master-switch')?.addEventListener('click', () => {
+                        if (row.dataset.visible !== 'true') {
+                            return;
+                        }
+                        row.dataset.enabled = String(row.dataset.enabled !== 'true');
+                        this.syncToggleDefaultStateRow(row);
                     });
+
+                    row.querySelector('.default-state-eye-button')?.addEventListener('click', () => {
+                        const nextVisible = row.dataset.visible !== 'true';
+                        row.dataset.visible = String(nextVisible);
+                        row.dataset.enabled = String(nextVisible ? row.dataset.enabled === 'true' : false);
+                        this.syncToggleDefaultStateRow(row);
+                    });
+                    return;
+                }
+
+                this.syncVisibilityDefaultStateRow(row);
+                row.querySelector('.default-state-eye-button')?.addEventListener('click', () => {
+                    row.dataset.visible = String(row.dataset.visible !== 'true');
+                    this.syncVisibilityDefaultStateRow(row);
                 });
             });
 
