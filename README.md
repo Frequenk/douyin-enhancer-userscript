@@ -4,182 +4,48 @@
 [![GitHub stars](https://img.shields.io/github/stars/Frequenk/douyin-enhancer-userscript?style=flat&logo=github&label=Stars&color=white)](https://github.com/Frequenk/douyin-enhancer-userscript/stargazers)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-一个强大的油猴脚本，为网页版抖音提供更纯净、更高效的浏览体验。
+一个面向网页版抖音的用户脚本，让信息流更干净、操作更顺手、筛选更高效：自动跳过直播和广告、按账号名/文案/话题标签屏蔽内容、自动切最高画质(视频流与直播)，分辨率筛选、AI 智能筛选和自动点赞、极速模式、每日统计，以及工具栏按钮显示与默认开关管理。
 
 ## 📸 效果预览
 
 ![功能面板截图](https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/screenshot-2.png)
 
-## ✨ 核心功能
-
-### 1. 🚀 自动跳过
-| 功能 | 说明 |
-|------|------|
-| ⏭️ 跳过直播 | 自动检测并跳过直播内容 |
-| ⏭️ 跳过广告 | 自动识别并跳过广告视频 |
-
-### 2. 🚫 智能屏蔽
-| 功能 | 说明 |
-|------|------|
-| 🎯 多维度屏蔽 | 支持按**账号名称**、**视频简介**、**#话题标签**三种方式检测关键字 |
-| ⚙️ 智能处理 | 可选"不感兴趣"(R键)告诉算法，或仅跳到下一个视频 |
-| 📁 导入/导出 | 支持通过 .txt 文件批量管理屏蔽关键字列表 |
-
-### 3. 📺 画质优化
-| 功能 | 说明 |
-|------|------|
-| 🔝 自动最高分辨率 | 智能选择当前视频可用的最高分辨率 (4K > 2K > 1080P...) |
-| 🔒 锁定4K | 找到4K视频后可自动关闭此功能，避免不必要的切换 |
-| 📡 直播最高清 | 在 `live.douyin.com` 和 `www.douyin.com/root/live/*` 直播页工具栏提供“最高清”开关，自动切到可用最高画质后自动关闭 |
-| ⚙️ 分辨率筛选 | 只观看指定分辨率的视频，不符合的自动跳过 |
-
-### 4. 🤖 AI智能筛选
-| 功能 | 说明 |
-|------|------|
-| 🧠 内容识别 | 自定义想看的内容（如"风景"、"猫咪"），AI自动筛选 |
-| ❤️ 智能点赞 | 当AI判定为喜欢的内容时，可选择自动点赞(Z键) |
-| ⚡ 快速决策 | 通过多时间点截图检测，实现快速精准判断 |
-| 🔀 双服务商 | 支持 Ollama（本地部署）和智谱AI（在线） |
-
-### 5. ⚡ 极速模式
-| 功能 | 说明 |
-|------|------|
-| 🕒 定时切换 | 每个视频播放指定时间后自动切换，适合快速浏览 |
-| ⏱️ 自定义时间 | 支持固定时间或随机时间模式 (1-3600秒) |
-
-### 6. 📊 数据统计
-| 功能 | 说明 |
-|------|------|
-| 🧾 实时统计 | 工具栏胶囊展示“今[数量][时长]”，打开统计面板查看汇总 |
-| 🗓️ 年度视图 | 年度热力图 + 月度柱状图（数量/时长） |
-| 📥📤 导入导出 | 支持数据导入/导出，方便备份与迁移 |
-
-### 7. 🎛️ 按钮设置
-| 功能 | 说明 |
-|------|------|
-| 🔘 默认开关 | 可在工具栏打开“设置”弹窗，为每个功能单独设置刷新后的默认开关状态 |
-| 👁️ 眼睛显隐 | 用眼睛图标单独控制按钮是否显示，统计胶囊等工具入口也支持单独显隐 |
-| 🛡️ 隐藏保护 | 当按钮被设为隐藏时，会自动关闭默认开关；若想默认启用，会提示先展示按钮 |
-| 🔁 刷新后生效 | 保存后不会立刻改动当前会话，刷新页面后按这里的设置生效 |
-
 ## 📦 安装
 
-### 前置要求
-浏览器需安装用户脚本管理器：
-- [Tampermonkey](https://www.tampermonkey.net/) (推荐)
-- [Violentmonkey](https://violentmonkey.github.io/)
+先安装 [Tampermonkey](https://www.tampermonkey.net/) 或 [Violentmonkey](https://violentmonkey.github.io/)。
+然后从 [Greasy Fork 一键安装](https://greasyfork.org/zh-CN/scripts/539942) 或前往 [GitHub 项目主页](https://github.com/Frequenk/douyin-enhancer-userscript) 查看源码。
 
-### 安装方式
+## 📚 详细文档
 
-| 来源 | 链接 |
-|------|------|
-| **Greasy Fork** (推荐) | [🔗 点击安装](https://greasyfork.org/zh-CN/scripts/539942) |
-| **GitHub** | [🔗 查看源码](https://github.com/Frequenk/douyin-enhancer-userscript) |
-
-## 🎮 使用方法
-
-1. 打开 [网页版抖音](https://www.douyin.com/)
-2. 在播放器底部可看到统一控制面板
-3. 点击工具栏里的“设置”胶囊，可统一配置功能按钮的默认开关、眼睛显隐，以及统计胶囊等入口的显示状态
-4. 点击各项功能的**标题文字**，即可打开专属设置弹窗
-5. 所有设置自动保存在浏览器本地
-6. 进入 `live.douyin.com` 或从普通视频流无刷新点进 `www.douyin.com/root/live/*` 时，直播页工具栏会出现“最高清”开关
-
-### ⌨️ 快捷键
-
-| 按键 | 功能 |
-|------|------|
-| `=` | 开启/关闭"跳过直播"功能 |
-
-## 🤖 AI功能配置 (可选)
-
-如需使用AI智能筛选功能，可选择以下任一方式配置：
-
-### 方式一：使用智谱AI（在线）
-
-1. 点击 [注册智谱账号](https://www.bigmodel.cn/invite?icode=GrgfvImGKwdq1i6nWogBXQZ3c5owLmCCcMQXWcJRS8E%3D) 创建账号并获取 API Key
-2. 在脚本设置中选择「智谱AI」服务商
-3. 粘贴 API Key，选择模型即可使用
-
-| 模型 | 说明 |
-|------|------|
-| **GLM-4.6V-Flash** | 免费，高峰期不稳定 |
-| **GLM-4.6V-FlashX** | 付费，比 GLM-4.6V 响应快 |
-| **GLM-4.6V** | 付费 |
-
-提示：
-- 无资源包时，会按目录价扣智谱账户余额。
-- 推荐特惠专区的两个套餐：
-- `GLM-4.6V-FlashX`：2.9 元 / 1000 万 token
-- `GLM-4.6V`：5.9 元 / 1000 万 token
-- 以上是 2026 年 3 月 12 日看到的活动信息，后续如有变化，请自行查阅智谱官方文档选择新的模型或优惠套餐。
-- 智谱调用失败时，脚本会直接展示接口返回的具体报错内容。
-
-### 方式二：使用 Ollama（本地部署）
-
-如果你有本地 GPU 或希望完全离线使用：
-
-#### 1. 安装 Ollama
-下载并安装 [Ollama](https://ollama.com/)，然后下载视觉模型：
-```bash
-ollama pull qwen3-vl:8b
-```
-
-#### 2. 配置跨域访问
-由于 Ollama 默认仅允许本地访问，脚本需要调用本地API，因此必须配置 **跨域允许**。
-
-**Windows:**
-1. 打开 **控制面板** -> **系统** -> **高级系统设置** -> **环境变量**
-2. 在 **用户变量** 中点击 **新建**，添加以下两个变量：
-   - 变量名: `OLLAMA_HOST`，变量值: `0.0.0.0`
-   - 变量名: `OLLAMA_ORIGINS`，变量值: `*`
-3. 点击确定保存，重启 Ollama
-
-**macOS:**
-打开终端，运行以下命令，然后重启 Ollama 应用：
-```bash
-launchctl setenv OLLAMA_HOST "0.0.0.0"
-launchctl setenv OLLAMA_ORIGINS "*"
-```
-
-**Linux:**
-如果使用 systemd 运行：
-1. 编辑服务配置: `sudo systemctl edit ollama.service`
-2. 在 `[Service]` 下方添加：
-   ```ini
-   [Service]
-   Environment="OLLAMA_HOST=0.0.0.0"
-   Environment="OLLAMA_ORIGINS=*"
-   ```
-3. 重启服务: `sudo systemctl daemon-reload && sudo systemctl restart ollama`
+- [功能详解](docs/features.md)
+- [AI 功能配置](docs/ai-setup.md)
 
 ## 🔗 相关链接
 
-| 平台 | 链接 |
-|------|------|
-| 📜 **Greasy Fork** | https://greasyfork.org/zh-CN/scripts/539942 |
-| 💻 **GitHub** | https://github.com/Frequenk/douyin-enhancer-userscript |
+- [Greasy Fork 发布页](https://greasyfork.org/zh-CN/scripts/539942)
+- [GitHub 仓库](https://github.com/Frequenk/douyin-enhancer-userscript)
 
 ## 📄 许可证
 
 本项目采用 [GPL-3.0 License](https://opensource.org/licenses/GPL-3.0) 开源协议。
 
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 🧩 开发/构建
-
-本项目支持模块化开发，使用 `esbuild` 打包为单文件用户脚本。
-
-1. 安装依赖：`npm install`
-2. 构建输出：`npm run build`
-3. 监听构建：`npm run build:watch`
-
-开发源码位于 `src/`，构建产物为根目录的 `douyin-enhancer.user.js`。
-
 ## ⭐ 支持
 
-如果这个脚本对你有帮助，请：
-- 在 [Greasy Fork](https://greasyfork.org/zh-CN/scripts/539942) 点个好评 👍
-- 在 [GitHub](https://github.com/Frequenk/douyin-enhancer-userscript) 给个 Star ⭐
+如果这个脚本对你有帮助，可以：
+
+- 在 [Greasy Fork](https://greasyfork.org/zh-CN/scripts/539942) 给个好评
+- 在 [GitHub](https://github.com/Frequenk/douyin-enhancer-userscript) 点个 Star
+- 也可以通过下面的二维码支持一下作者
+
+<table>
+  <tr>
+    <td align="center">
+      <strong>微信赞赏码</strong><br>
+      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zanshangma.png" alt="微信赞赏码" width="320">
+    </td>
+    <td align="center">
+      <strong>支付宝领红包</strong><br>
+      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zhifubaohongbao.png" alt="支付宝领红包" width="320">
+    </td>
+  </tr>
+</table>
