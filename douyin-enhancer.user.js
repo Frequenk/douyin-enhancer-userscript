@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.2
-// @changelog 优化“设置”面板：按钮默认状态改为“默认开关 + 眼睛显隐”，隐藏时自动关闭默认开关，并增加悬停提示；
+// @version 4.3
+// @changelog 支持将 www.douyin.com/follow/live 识别为直播页入口，关注直播页也可启用直播增强能力；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -2631,7 +2631,7 @@
       setInterval(() => this.mainLoop(), 300);
     }
     shouldSkipCurrentPage() {
-      return window.location.hostname === "live.douyin.com" || window.location.hostname === "www.douyin.com" && (window.location.pathname.startsWith("/root/live/") || window.location.pathname.startsWith("/video/") || window.location.pathname.startsWith("/lvdetail/"));
+      return window.location.hostname === "live.douyin.com" || window.location.hostname === "www.douyin.com" && (window.location.pathname.startsWith("/root/live/") || window.location.pathname.startsWith("/follow/live") || window.location.pathname.startsWith("/video/") || window.location.pathname.startsWith("/lvdetail/"));
     }
     assignSpeedModeDuration(isNewVideo) {
       const speedConfig = this.config.get("speedMode");
@@ -3036,7 +3036,7 @@
       this.applyHighestResolution();
     }
     isSupportedLivePage() {
-      return window.location.hostname === "live.douyin.com" || window.location.hostname === "www.douyin.com" && window.location.pathname.startsWith("/root/live/");
+      return window.location.hostname === "live.douyin.com" || window.location.hostname === "www.douyin.com" && (window.location.pathname.startsWith("/root/live/") || window.location.pathname.startsWith("/follow/live"));
     }
     injectStyles() {
       if (document.getElementById(STYLE_ID) || !document.head) {
@@ -3297,7 +3297,7 @@
   var liveEnhancer = null;
   var lastRouteKey = "";
   function isDouyinLivePage(location) {
-    return location.hostname === "live.douyin.com" || location.hostname === "www.douyin.com" && location.pathname.startsWith("/root/live/");
+    return location.hostname === "live.douyin.com" || location.hostname === "www.douyin.com" && (location.pathname.startsWith("/root/live/") || location.pathname.startsWith("/follow/live"));
   }
   function isExcludedPage(location) {
     if (location.hostname !== "www.douyin.com") {

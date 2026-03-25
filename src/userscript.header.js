@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.2
-// @changelog 优化“设置”面板：按钮默认状态改为“默认开关 + 眼睛显隐”，隐藏时自动关闭默认开关，并增加悬停提示；
+// @version 4.3
+// @changelog 支持将 www.douyin.com/follow/live 识别为直播页入口，关注直播页也可启用直播增强能力；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License

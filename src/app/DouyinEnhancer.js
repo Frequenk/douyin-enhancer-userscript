@@ -65,6 +65,7 @@ export class DouyinEnhancer {
             return window.location.hostname === 'live.douyin.com'
                 || (window.location.hostname === 'www.douyin.com'
                     && (window.location.pathname.startsWith('/root/live/')
+                        || window.location.pathname.startsWith('/follow/live')
                         || window.location.pathname.startsWith('/video/')
                         || window.location.pathname.startsWith('/lvdetail/')));
         }

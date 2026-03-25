@@ -7,7 +7,9 @@ let lastRouteKey = '';
 
 function isDouyinLivePage(location) {
     return location.hostname === 'live.douyin.com'
-        || (location.hostname === 'www.douyin.com' && location.pathname.startsWith('/root/live/'));
+        || (location.hostname === 'www.douyin.com'
+            && (location.pathname.startsWith('/root/live/')
+                || location.pathname.startsWith('/follow/live')));
 }
 
 function isExcludedPage(location) {
