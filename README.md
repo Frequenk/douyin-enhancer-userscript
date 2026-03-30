@@ -41,7 +41,7 @@
   <tr>
     <td align="center">
       <strong>微信赞赏码</strong><br>
-      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zanshangma.png" alt="微信赞赏码" width="320">
+      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zanshangma-2.png" alt="微信赞赏码" width="320">
     </td>
     <td align="center">
       <strong>支付宝领红包</strong><br>
