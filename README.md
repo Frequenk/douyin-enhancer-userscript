@@ -40,12 +40,12 @@
 <table>
   <tr>
     <td align="center">
-      <strong>微信赞赏码</strong><br>
-      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zanshangma-2.png" alt="微信赞赏码 (一块两块也是爱, 人间自有真情在)" width="320">
+      <strong>微信赞赏码 (一块两块也是爱, 人间自有真情在)</strong><br>
+      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zanshangma-2.png" alt="微信赞赏码" width="320">
     </td>
     <td align="center">
-      <strong>支付宝领红包</strong><br>
-      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zhifubaohongbao.png" alt="支付宝领红包 (一毛两毛不嫌少, 天若有情天亦老)" width="320">
+      <strong>支付宝领红包 (一毛两毛不嫌少, 天若有情天亦老)</strong><br>
+      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zhifubaohongbao.png" alt="支付宝领红包" width="320">
     </td>
   </tr>
 </table>
