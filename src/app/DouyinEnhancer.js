@@ -365,6 +365,7 @@ export class DouyinEnhancer {
                     this.seenVideoUrls.add(currentVideoUrl);
                     this.statsTracker.inc('videoCount', 1);
                 }
+                this.applyAutoCleanScreenForCurrentVideo();
                 console.log('===== 新视频开始 =====');
                 return true;
             }
@@ -437,6 +438,18 @@ export class DouyinEnhancer {
             }
 
             return false;
+        }
+
+        applyAutoCleanScreenForCurrentVideo() {
+            if (!this.config.isEnabled('autoCleanScreen')) {
+                return;
+            }
+            if (document.visibilityState !== 'visible') {
+                return;
+            }
+
+            console.log('自动清屏：新视频触发一次 J 键');
+            this.videoController.toggleCleanScreen();
         }
     }
 

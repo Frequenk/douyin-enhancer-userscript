@@ -763,6 +763,7 @@ export class UIFactory {
             }
 
             const defaultStates = this.config.getDefaultButtonStates();
+            const autoCleanScreenEnabled = this.config.isEnabled('autoCleanScreen');
             const items = this.getDefaultStateItems();
             const toggleItems = items.filter(item => item.stateType === 'toggle');
             const visibilityItems = items.filter(item => item.stateType === 'visibility');
@@ -791,7 +792,7 @@ export class UIFactory {
                     <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">关闭</button>
                 </div>
                 <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-                    设置按钮的默认状态，刷新后生效。眼睛控制是否显示；隐藏时会自动关闭默认开关。
+                    设置按钮默认状态和自动行为。眼睛控制是否显示；隐藏时会自动关闭默认开关。
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
                     <div>
@@ -810,6 +811,20 @@ export class UIFactory {
                             `).join('')}
                         </div>
                     </div>
+                    <div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">系统功能</div>
+                        <div class="default-state-row default-state-row-system-toggle" data-enabled="${autoCleanScreenEnabled}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+                                <span style="color: white; font-size: 13px;">自动清屏 <span style="color: rgba(255,255,255,0.5); font-size: 11px;">（默认触发抖音清屏，等同按 J）</span></span>
+                            </div>
+                            <div class="default-state-controls">
+                                <button type="button" class="default-state-master-switch ${autoCleanScreenEnabled ? 'is-checked' : ''}" aria-checked="${autoCleanScreenEnabled}">
+                                    <span class="default-state-master-switch-inner"></span>
+                                </button>
+                                <span aria-hidden="true" style="display: inline-flex; width: 28px; height: 28px; visibility: hidden;"></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button class="default-states-save-btn" style="flex: 1; padding: 8px 10px; background: #fe2c55; color: white; border: none; border-radius: 6px; cursor: pointer;">保存</button>
@@ -825,12 +840,27 @@ export class UIFactory {
             dialog.querySelector('.default-states-cancel-btn').addEventListener('click', closeDialog);
             dialog.querySelector('.default-states-save-btn').addEventListener('click', () => {
                 const nextStates = {};
-                dialog.querySelectorAll('.default-state-row').forEach(row => {
+                dialog.querySelectorAll('.default-state-row[data-default-key]').forEach(row => {
                     nextStates[row.dataset.defaultKey] = row.dataset.currentState;
                 });
                 this.config.saveDefaultEnabledStates(nextStates);
-                this.notificationManager.showMessage('按钮设置已保存，刷新后生效');
+                this.config.applyButtonStatesToCurrentSession(nextStates);
+                this.config.saveAutoCleanScreenSetting(dialog.querySelector('.default-state-row-system-toggle')?.dataset.enabled === 'true');
+                this.insertButtons();
+                document.dispatchEvent(new CustomEvent('douyin-speed-mode-updated'));
+                this.notificationManager.showMessage('设置已保存');
                 closeDialog();
+            });
+
+            dialog.querySelector('.default-state-row-system-toggle .default-state-master-switch')?.addEventListener('click', () => {
+                const row = dialog.querySelector('.default-state-row-system-toggle');
+                if (!row) return;
+                const enabled = row.dataset.enabled !== 'true';
+                row.dataset.enabled = String(enabled);
+                const switchButton = row.querySelector('.default-state-master-switch');
+                if (!switchButton) return;
+                switchButton.classList.toggle('is-checked', enabled);
+                switchButton.setAttribute('aria-checked', String(enabled));
             });
 
             dialog.querySelectorAll('.default-state-row').forEach(row => {

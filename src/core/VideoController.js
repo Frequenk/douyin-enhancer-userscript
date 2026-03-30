@@ -37,6 +37,10 @@ export class VideoController {
             this.sendKeyEvent('r', 'KeyR', 82);
         }
 
+        toggleCleanScreen() {
+            this.sendKeyEvent('j', 'KeyJ', 74);
+        }
+
         sendKeyEvent(key, code = null, keyCode = null) {
             try {
                 const event = new KeyboardEvent('keydown', {

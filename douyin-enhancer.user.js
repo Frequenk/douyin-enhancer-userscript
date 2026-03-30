@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.3
-// @changelog 支持将 www.douyin.com/follow/live 识别为直播页入口，关注直播页也可启用直播增强能力；
+// @version 4.4
+// @changelog 新增系统功能“自动清屏”默认值设置；按钮设置保存后当前会话立即生效，无需刷新；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -95,6 +95,10 @@
       this.config = {
         skipLive: { enabled: this.getDefaultEnabledState("skipLive"), key: "skipLive" },
         autoHighRes: { enabled: this.getDefaultEnabledState("autoHighRes"), key: "autoHighRes" },
+        autoCleanScreen: {
+          enabled: this.loadAutoCleanScreenSetting(),
+          key: "autoCleanScreen"
+        },
         blockKeywords: {
           enabled: this.getDefaultEnabledState("blockKeywords"),
           key: "blockKeywords",
@@ -181,6 +185,9 @@
     getDefaultButtonStates() {
       return { ...this.defaultButtonStates };
     }
+    getSessionButtonStates() {
+      return { ...this.sessionButtonStates };
+    }
     isButtonVisibleInCurrentSession(key) {
       const state = this.sessionButtonStates[key];
       if (this.isToggleButtonStateKey(key)) {
@@ -199,6 +206,9 @@
     }
     loadKeywords() {
       return JSON.parse(localStorage.getItem("douyin_blocked_keywords") || '["\u5E97", "\u7504\u9009"]');
+    }
+    loadAutoCleanScreenSetting() {
+      return localStorage.getItem("douyin_auto_clean_screen_enabled") === "true";
     }
     loadSpeedSeconds() {
       const value = parseInt(localStorage.getItem("douyin_speed_mode_seconds") || "6", 10);
@@ -252,6 +262,10 @@
     saveKeywords(keywords) {
       this.config.blockKeywords.keywords = keywords;
       localStorage.setItem("douyin_blocked_keywords", JSON.stringify(keywords));
+    }
+    saveAutoCleanScreenSetting(enabled) {
+      this.config.autoCleanScreen.enabled = enabled;
+      localStorage.setItem("douyin_auto_clean_screen_enabled", enabled.toString());
     }
     saveSpeedSeconds(seconds) {
       this.config.speedMode.seconds = seconds;
@@ -325,6 +339,18 @@
         }
       });
       localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultButtonStates));
+    }
+    applyButtonStatesToCurrentSession(states) {
+      Object.keys(states).forEach((key) => {
+        if (!this.isToggleButtonStateKey(key) && !this.isVisibilityButtonStateKey(key)) {
+          return;
+        }
+        const normalizedState = this.normalizeDefaultButtonState(key, states[key]);
+        this.sessionButtonStates[key] = normalizedState;
+        if (this.isToggleButtonStateKey(key) && this.config[key]) {
+          this.config[key].enabled = normalizedState === "enabled";
+        }
+      });
     }
     get(key) {
       return this.config[key];
@@ -413,6 +439,9 @@
     pressR() {
       this.notificationManager.showMessage("\u5C4F\u853D\u8D26\u53F7: \u{1F6AB} \u4E0D\u611F\u5174\u8DA3");
       this.sendKeyEvent("r", "KeyR", 82);
+    }
+    toggleCleanScreen() {
+      this.sendKeyEvent("j", "KeyJ", 74);
     }
     sendKeyEvent(key, code = null, keyCode = null) {
       try {
@@ -1349,6 +1378,7 @@
       return `${h}:${m}:${s}`;
     }
     showDefaultStatesDialog() {
+      var _a;
       if (this.defaultStatesDialogBusy)
         return;
       this.defaultStatesDialogBusy = true;
@@ -1361,6 +1391,7 @@
         return;
       }
       const defaultStates = this.config.getDefaultButtonStates();
+      const autoCleanScreenEnabled = this.config.isEnabled("autoCleanScreen");
       const items = this.getDefaultStateItems();
       const toggleItems = items.filter((item) => item.stateType === "toggle");
       const visibilityItems = items.filter((item) => item.stateType === "visibility");
@@ -1388,7 +1419,7 @@
                     <button class="default-states-close-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 4px 10px; border-radius: 6px; cursor: pointer;">\u5173\u95ED</button>
                 </div>
                 <div style="font-size: 12px; line-height: 1.7; color: rgba(255,255,255,0.78); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-                    \u8BBE\u7F6E\u6309\u94AE\u7684\u9ED8\u8BA4\u72B6\u6001\uFF0C\u5237\u65B0\u540E\u751F\u6548\u3002\u773C\u775B\u63A7\u5236\u662F\u5426\u663E\u793A\uFF1B\u9690\u85CF\u65F6\u4F1A\u81EA\u52A8\u5173\u95ED\u9ED8\u8BA4\u5F00\u5173\u3002
+                    \u8BBE\u7F6E\u6309\u94AE\u9ED8\u8BA4\u72B6\u6001\u548C\u81EA\u52A8\u884C\u4E3A\u3002\u773C\u775B\u63A7\u5236\u662F\u5426\u663E\u793A\uFF1B\u9690\u85CF\u65F6\u4F1A\u81EA\u52A8\u5173\u95ED\u9ED8\u8BA4\u5F00\u5173\u3002
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
                     <div>
@@ -1407,6 +1438,20 @@
                             `).join("")}
                         </div>
                     </div>
+                    <div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.62); margin-bottom: 8px;">\u7CFB\u7EDF\u529F\u80FD</div>
+                        <div class="default-state-row default-state-row-system-toggle" data-enabled="${autoCleanScreenEnabled}" style="display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 10px 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+                                <span style="color: white; font-size: 13px;">\u81EA\u52A8\u6E05\u5C4F <span style="color: rgba(255,255,255,0.5); font-size: 11px;">\uFF08\u9ED8\u8BA4\u89E6\u53D1\u6296\u97F3\u6E05\u5C4F\uFF0C\u7B49\u540C\u6309 J\uFF09</span></span>
+                            </div>
+                            <div class="default-state-controls">
+                                <button type="button" class="default-state-master-switch ${autoCleanScreenEnabled ? "is-checked" : ""}" aria-checked="${autoCleanScreenEnabled}">
+                                    <span class="default-state-master-switch-inner"></span>
+                                </button>
+                                <span aria-hidden="true" style="display: inline-flex; width: 28px; height: 28px; visibility: hidden;"></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button class="default-states-save-btn" style="flex: 1; padding: 8px 10px; background: #fe2c55; color: white; border: none; border-radius: 6px; cursor: pointer;">\u4FDD\u5B58</button>
@@ -1418,19 +1463,36 @@
       dialog.querySelector(".default-states-close-btn").addEventListener("click", closeDialog);
       dialog.querySelector(".default-states-cancel-btn").addEventListener("click", closeDialog);
       dialog.querySelector(".default-states-save-btn").addEventListener("click", () => {
+        var _a2;
         const nextStates = {};
-        dialog.querySelectorAll(".default-state-row").forEach((row) => {
+        dialog.querySelectorAll(".default-state-row[data-default-key]").forEach((row) => {
           nextStates[row.dataset.defaultKey] = row.dataset.currentState;
         });
         this.config.saveDefaultEnabledStates(nextStates);
-        this.notificationManager.showMessage("\u6309\u94AE\u8BBE\u7F6E\u5DF2\u4FDD\u5B58\uFF0C\u5237\u65B0\u540E\u751F\u6548");
+        this.config.applyButtonStatesToCurrentSession(nextStates);
+        this.config.saveAutoCleanScreenSetting(((_a2 = dialog.querySelector(".default-state-row-system-toggle")) == null ? void 0 : _a2.dataset.enabled) === "true");
+        this.insertButtons();
+        document.dispatchEvent(new CustomEvent("douyin-speed-mode-updated"));
+        this.notificationManager.showMessage("\u8BBE\u7F6E\u5DF2\u4FDD\u5B58");
         closeDialog();
       });
+      (_a = dialog.querySelector(".default-state-row-system-toggle .default-state-master-switch")) == null ? void 0 : _a.addEventListener("click", () => {
+        const row = dialog.querySelector(".default-state-row-system-toggle");
+        if (!row)
+          return;
+        const enabled = row.dataset.enabled !== "true";
+        row.dataset.enabled = String(enabled);
+        const switchButton = row.querySelector(".default-state-master-switch");
+        if (!switchButton)
+          return;
+        switchButton.classList.toggle("is-checked", enabled);
+        switchButton.setAttribute("aria-checked", String(enabled));
+      });
       dialog.querySelectorAll(".default-state-row").forEach((row) => {
-        var _a, _b, _c;
+        var _a2, _b, _c;
         if (row.dataset.stateType === "toggle") {
           this.syncToggleDefaultStateRow(row);
-          (_a = row.querySelector(".default-state-master-switch")) == null ? void 0 : _a.addEventListener("click", () => {
+          (_a2 = row.querySelector(".default-state-master-switch")) == null ? void 0 : _a2.addEventListener("click", () => {
             if (row.dataset.visible !== "true") {
               return;
             }
@@ -2919,6 +2981,7 @@
           this.seenVideoUrls.add(currentVideoUrl);
           this.statsTracker.inc("videoCount", 1);
         }
+        this.applyAutoCleanScreenForCurrentVideo();
         console.log("===== \u65B0\u89C6\u9891\u5F00\u59CB =====");
         return true;
       }
@@ -2982,6 +3045,16 @@
         this.aiDetector.stopChecking = true;
       }
       return false;
+    }
+    applyAutoCleanScreenForCurrentVideo() {
+      if (!this.config.isEnabled("autoCleanScreen")) {
+        return;
+      }
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      console.log("\u81EA\u52A8\u6E05\u5C4F\uFF1A\u65B0\u89C6\u9891\u89E6\u53D1\u4E00\u6B21 J \u952E");
+      this.videoController.toggleCleanScreen();
     }
   };
 

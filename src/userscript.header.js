@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.3
-// @changelog 支持将 www.douyin.com/follow/live 识别为直播页入口，关注直播页也可启用直播增强能力；
+// @version 4.4
+// @changelog 新增系统功能“自动清屏”默认值设置；按钮设置保存后当前会话立即生效，无需刷新；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License

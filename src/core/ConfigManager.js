@@ -17,6 +17,10 @@ export class ConfigManager {
             this.config = {
                 skipLive: { enabled: this.getDefaultEnabledState('skipLive'), key: 'skipLive' },
                 autoHighRes: { enabled: this.getDefaultEnabledState('autoHighRes'), key: 'autoHighRes' },
+                autoCleanScreen: {
+                    enabled: this.loadAutoCleanScreenSetting(),
+                    key: 'autoCleanScreen'
+                },
                 blockKeywords: {
                     enabled: this.getDefaultEnabledState('blockKeywords'),
                     key: 'blockKeywords',
@@ -113,6 +117,10 @@ export class ConfigManager {
             return { ...this.defaultButtonStates };
         }
 
+        getSessionButtonStates() {
+            return { ...this.sessionButtonStates };
+        }
+
         isButtonVisibleInCurrentSession(key) {
             const state = this.sessionButtonStates[key];
             if (this.isToggleButtonStateKey(key)) {
@@ -133,6 +141,10 @@ export class ConfigManager {
 
         loadKeywords() {
             return JSON.parse(localStorage.getItem('douyin_blocked_keywords') || '["店", "甄选"]');
+        }
+
+        loadAutoCleanScreenSetting() {
+            return localStorage.getItem('douyin_auto_clean_screen_enabled') === 'true';
         }
 
         loadSpeedSeconds() {
@@ -203,6 +215,11 @@ export class ConfigManager {
         saveKeywords(keywords) {
             this.config.blockKeywords.keywords = keywords;
             localStorage.setItem('douyin_blocked_keywords', JSON.stringify(keywords));
+        }
+
+        saveAutoCleanScreenSetting(enabled) {
+            this.config.autoCleanScreen.enabled = enabled;
+            localStorage.setItem('douyin_auto_clean_screen_enabled', enabled.toString());
         }
 
         saveSpeedSeconds(seconds) {
@@ -292,6 +309,21 @@ export class ConfigManager {
                 }
             });
             localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultButtonStates));
+        }
+
+        applyButtonStatesToCurrentSession(states) {
+            Object.keys(states).forEach(key => {
+                if (!this.isToggleButtonStateKey(key) && !this.isVisibilityButtonStateKey(key)) {
+                    return;
+                }
+
+                const normalizedState = this.normalizeDefaultButtonState(key, states[key]);
+                this.sessionButtonStates[key] = normalizedState;
+
+                if (this.isToggleButtonStateKey(key) && this.config[key]) {
+                    this.config[key].enabled = normalizedState === 'enabled';
+                }
+            });
         }
 
         get(key) {
