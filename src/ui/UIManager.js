@@ -120,7 +120,7 @@ export class UIFactory {
 
         static createToggleButton(text, className, isEnabled, onToggle, onClick = null, shortcut = null) {
             const btnContainer = document.createElement('xg-icon');
-            btnContainer.className = `xgplayer-autoplay-setting ${className}`;
+            btnContainer.className = `xgplayer-autoplay-setting dy-enhancer-toolbar-button dy-enhancer-toolbar-toggle ${className}`;
 
             const shortcutHint = shortcut
                 ? `<div class="xgTips"><span>${text.replace(/<[^>]*>/g, '')}</span><span class="shortcutKey">${shortcut}</span></div>`
@@ -156,7 +156,7 @@ export class UIFactory {
 
         static createInfoButton(html, className, onClick = null) {
             const btnContainer = document.createElement('xg-icon');
-            btnContainer.className = `xgplayer-autoplay-setting ${className}`;
+            btnContainer.className = `dy-enhancer-toolbar-button dy-enhancer-toolbar-info ${className}`;
             btnContainer.style.cursor = 'pointer';
 
             btnContainer.innerHTML = `
@@ -499,7 +499,9 @@ export class UIFactory {
                 const flexDirection = getComputedStyle(parent).flexDirection;
                 const isRowReverse = flexDirection === 'row-reverse';
 
-                this.buttonConfigs.forEach(config => {
+                const totalButtonCount = this.buttonConfigs.length;
+
+                this.buttonConfigs.forEach((config, index) => {
                     let button = parent.querySelector(`.${config.className}`);
                     const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
                     if (!shouldRender) {
@@ -534,11 +536,8 @@ export class UIFactory {
                         }
                         parent.insertBefore(button, anchor);
                     }
-                    if (config.type === 'info') {
-                        button.style.order = isRowReverse ? '1' : '-1';
-                    } else {
-                        button.style.order = '0';
-                    }
+                    const customOrder = totalButtonCount - index;
+                    button.style.order = String(isRowReverse ? customOrder : -customOrder);
                     if (config.type !== 'info') {
                         const isEnabled = this.config.isEnabled(config.configKey);
                         const switchEl = button.querySelector('.dy-enhancer-switch');

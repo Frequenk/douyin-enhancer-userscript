@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.4
-// @changelog 新增系统功能“自动清屏”默认值设置；按钮设置保存后当前会话立即生效，无需刷新；
+// @version 4.5
+// @changelog 适配抖音新版工具栏布局；自定义按钮顺序固定在左侧；窄宽下自动换行且不再溢出；按钮间距、尺寸与原生样式细节优化；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -371,7 +371,7 @@
     activeVideo: "[data-e2e='feed-active-video']:has(video[src])",
     resolutionOptions: ".xgplayer-playing div.virtual > div.item",
     accountName: '[data-e2e="feed-video-nickname"]',
-    settingsPanel: "xg-icon.xgplayer-autoplay-setting",
+    settingsPanel: "xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button)",
     adIndicator: 'svg[viewBox="0 0 30 16"]',
     videoElement: "video[src]",
     videoDesc: '[data-e2e="video-desc"]'
@@ -802,7 +802,7 @@
     }
     static createToggleButton(text, className, isEnabled, onToggle, onClick = null, shortcut = null) {
       const btnContainer = document.createElement("xg-icon");
-      btnContainer.className = `xgplayer-autoplay-setting ${className}`;
+      btnContainer.className = `xgplayer-autoplay-setting dy-enhancer-toolbar-button dy-enhancer-toolbar-toggle ${className}`;
       const shortcutHint = shortcut ? `<div class="xgTips"><span>${text.replace(/<[^>]*>/g, "")}</span><span class="shortcutKey">${shortcut}</span></div>` : "";
       btnContainer.innerHTML = `
                 <div class="xgplayer-icon">
@@ -830,7 +830,7 @@
     }
     static createInfoButton(html, className, onClick = null) {
       const btnContainer = document.createElement("xg-icon");
-      btnContainer.className = `xgplayer-autoplay-setting ${className}`;
+      btnContainer.className = `dy-enhancer-toolbar-button dy-enhancer-toolbar-info ${className}`;
       btnContainer.style.cursor = "pointer";
       btnContainer.innerHTML = `
                 <div class="xgplayer-icon">
@@ -1145,7 +1145,8 @@
           return;
         const flexDirection = getComputedStyle(parent).flexDirection;
         const isRowReverse = flexDirection === "row-reverse";
-        this.buttonConfigs.forEach((config) => {
+        const totalButtonCount = this.buttonConfigs.length;
+        this.buttonConfigs.forEach((config, index) => {
           let button = parent.querySelector(`.${config.className}`);
           const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
           if (!shouldRender) {
@@ -1180,11 +1181,8 @@
             }
             parent.insertBefore(button, anchor);
           }
-          if (config.type === "info") {
-            button.style.order = isRowReverse ? "1" : "-1";
-          } else {
-            button.style.order = "0";
-          }
+          const customOrder = totalButtonCount - index;
+          button.style.order = String(isRowReverse ? customOrder : -customOrder);
           if (config.type !== "info") {
             const isEnabled = this.config.isEnabled(config.configKey);
             const switchEl = button.querySelector(".dy-enhancer-switch");
@@ -2718,29 +2716,201 @@
       style.innerHTML = `
                 /* \u8BA9\u53F3\u4FA7\u6309\u94AE\u5BB9\u5668\u9AD8\u5EA6\u81EA\u9002\u5E94\uFF0C\u9632\u6B62\u6309\u94AE\u6362\u884C\u65F6\u88AB\u9690\u85CF */
                 .xg-right-grid {
+                    display: flex !important;
+                    flex-wrap: wrap !important;
+                    justify-content: flex-end !important;
+                    align-items: center !important;
+                    align-content: flex-end !important;
                     height: auto !important;
+                    min-height: 0 !important;
+                    width: auto !important;
+                    line-height: 0 !important;
+                    font-size: 0 !important;
                     max-height: none !important;
                     overflow: visible !important;
+                    row-gap: 0 !important;
+                    column-gap: 0 !important;
                 }
 
-                /* \u786E\u4FDD\u6309\u94AE\u5BB9\u5668\u53EF\u4EE5\u6B63\u786E\u6362\u884C\u663E\u793A */
-                .xg-right-grid xg-icon {
-                    display: inline-block !important;
-                    margin: -12px 0 !important;
+                /* \u81EA\u5B9A\u4E49\u5DE5\u5177\u680F\u6309\u94AE\u4E0D\u518D\u590D\u7528\u539F\u751F\u81EA\u52A8\u8FDE\u64AD\u69FD\u4F4D\u6837\u5F0F\uFF0C\u907F\u514D\u65B0\u7248\u63A7\u5236\u680F\u7684\u56FA\u5B9A\u5BBD\u5EA6\u6324\u538B\u6587\u672C */
+                .xg-right-grid .dy-enhancer-toolbar-button {
+                    display: inline-flex !important;
+                    align-items: center;
+                    align-self: center;
+                    flex: 0 0 auto;
+                    width: auto !important;
+                    height: 22px !important;
+                    min-width: max-content !important;
+                    max-width: none !important;
+                    margin: 0 !important;
+                    vertical-align: middle;
                 }
-                .xg-right-grid xg-icon.xgplayer-autoplay-setting {
+                .xg-right-grid .dy-enhancer-toolbar-info {
+                    margin: 0 4px 0 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle {
+                    margin: 0 4px 0 0 !important;
+                    padding: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-icon {
+                    display: inline-flex;
+                    align-items: center;
+                    height: 22px !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-icon {
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-label {
+                    display: inline-flex;
+                    align-items: center;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    gap: 6px;
+                    white-space: nowrap;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-label {
+                    gap: 0;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-title {
+                    display: inline-flex;
+                    align-items: center;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    margin-left: 0;
+                    white-space: nowrap;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-title {
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous,
+                .xg-right-grid .immersive-switch,
+                .xg-right-grid .xgplayer-playclarity-setting,
+                .xg-right-grid .xgplayer-playback-setting {
+                    margin: 0 2px 0 0 !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    align-self: center !important;
+                }
+                .xg-right-grid .automatic-continuous {
+                    margin-left: -8px !important;
+                }
+                .xg-right-grid .immersive-switch {
+                    margin-left: -12px !important;
+                }
+                .xg-right-grid .xgplayer-playclarity-setting {
+                    margin-left: -8px !important;
+                }
+                .xg-right-grid .xgplayer-playback-setting {
+                    margin-left: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous .xgplayer-setting-label,
+                .xg-right-grid .immersive-switch .xgplayer-setting-label {
+                    gap: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous .xgplayer-setting-title,
+                .xg-right-grid .immersive-switch .xgplayer-setting-title {
+                    margin-left: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous .xgplayer-icon,
+                .xg-right-grid .immersive-switch .xgplayer-icon {
+                    padding-left: 0 !important;
+                    margin-left: 0 !important;
+                }
+                .xg-right-grid .xgplayer-playclarity-setting .btn,
+                .xg-right-grid .xgplayer-playback-setting .xgplayer-setting-playbackRatio {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    padding-left: 0 !important;
+                    padding-right: 2px !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .xgplayer-playclarity-setting .gear,
+                .xg-right-grid .xgplayer-playclarity-setting .btnV2,
+                .xg-right-grid .xgplayer-playback-setting .xgplayer-slider,
+                .xg-right-grid .xgplayer-playback-setting .xgplayer-setting-content {
+                    min-height: 22px !important;
+                }
+                .xg-right-grid .xgplayer-fullscreen,
+                .xg-right-grid .xgplayer-page-full-screen,
+                .xg-right-grid .xgplayer-volume,
+                .xg-right-grid .xgplayer-shot,
+                .xg-right-grid .xgplayer-pip,
+                .xg-right-grid .xgplayer-watch-later,
+                .xg-right-grid .xg-options-icon {
+                    align-self: center !important;
+                    flex-shrink: 0 !important;
+                    margin-right: 4px !important;
+                    box-sizing: border-box !important;
+                }
+
+                /* \u53F3\u4FA7\u5DE5\u5177\u680F\u6574\u6392\u7EDF\u4E00\u8282\u594F\uFF0C\u907F\u514D\u9057\u6F0F\u5355\u4E2A\u539F\u751F\u6309\u94AE\u4ECD\u4FDD\u7559 24/32px \u5360\u4F4D */
+                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-pip):not(.xgplayer-watch-later) {
+                    flex: 0 0 auto !important;
+                    flex-shrink: 0 !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    align-self: center !important;
+                    box-sizing: border-box !important;
+                }
+                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-shot):not(.xgplayer-pip):not(.xgplayer-watch-later):not(.xg-options-icon) > .xgplayer-icon,
+                .xg-right-grid > xg-icon > .xgplayer-setting-playbackRatio,
+                .xg-right-grid > xg-icon > .gear,
+                .xg-right-grid > xg-icon > .btn-text,
+                .xg-right-grid > xg-icon:not(.xgplayer-watch-later) > .xgplayer-watch-later-item {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    box-sizing: border-box !important;
+                }
+                .xg-right-grid > xg-icon .btn-text,
+                .xg-right-grid > xg-icon .icon-text,
+                .xg-right-grid > xg-icon .xgplayer-setting-title,
+                .xg-right-grid > xg-icon .xgplayer-setting-playbackRatio,
+                .xg-right-grid > xg-icon .btn,
+                .xg-right-grid > xg-icon .btnV2 {
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    box-sizing: border-box !important;
+                }
+                .xg-right-grid > xg-icon .icon-text,
+                .xg-right-grid > xg-icon .btn-text span {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                }
+
+                /* \u7528\u5BB9\u5668\u7EA7\u6362\u884C\u63A7\u5236\u4EE3\u66FF\u6309\u94AE\u8D1F\u8FB9\u8DDD\uFF0C\u907F\u514D\u4E24\u6392\u88AB\u62C9\u5230\u4E0A\u4E0B\u4E24\u7AEF */
+                .xg-right-grid xg-icon {
+                    display: inline-flex !important;
+                    margin-top: -8px !important;
+                    margin-bottom: -8px !important;
+                    vertical-align: middle !important;
+                }
+                .xg-right-grid xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
                     margin-left: 2px !important;
                 }
 
-                /* \u9632\u6B62\u7236\u5BB9\u5668\u9650\u5236\u9AD8\u5EA6\u5BFC\u81F4\u5185\u5BB9\u88AB\u88C1\u526A */
+                /* \u9632\u6B62\u63D0\u793A\u5185\u5BB9\u88AB\u64AD\u653E\u5668\u5C42\u88C1\u526A */
                 .xgplayer-controls {
                     overflow: visible !important;
                 }
 
-                /* \u8BA9\u63A7\u5236\u680F\u5E95\u90E8\u533A\u57DF\u9AD8\u5EA6\u81EA\u9002\u5E94 */
+                /* \u8BA9\u63A7\u5236\u680F\u5E95\u90E8\u533A\u57DF\u9AD8\u5EA6\u81EA\u9002\u5E94\uFF0C\u5BB9\u7EB3\u6362\u884C\u540E\u7684\u4E24\u6392\u6309\u94AE */
                 .xgplayer-controls-bottom {
                     height: auto !important;
                     min-height: 50px !important;
+                    overflow: visible !important;
                 }
 
                 /* \u7EDF\u8BA1\u80F6\u56CA Hover \u63D0\u793A */
@@ -2886,6 +3056,7 @@
 
                 /* \u81EA\u5B9A\u4E49\u5F00\u5173\uFF0C\u907F\u514D\u88AB\u64AD\u653E\u5668\u539F\u751F xg-switch \u72B6\u6001\u5E72\u6270 */
                 .dy-enhancer-switch {
+                    align-self: center;
                     position: relative;
                     width: 24px;
                     min-width: 24px;

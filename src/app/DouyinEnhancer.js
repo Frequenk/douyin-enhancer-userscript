@@ -96,29 +96,201 @@ export class DouyinEnhancer {
             style.innerHTML = `
                 /* 让右侧按钮容器高度自适应，防止按钮换行时被隐藏 */
                 .xg-right-grid {
+                    display: flex !important;
+                    flex-wrap: wrap !important;
+                    justify-content: flex-end !important;
+                    align-items: center !important;
+                    align-content: flex-end !important;
                     height: auto !important;
+                    min-height: 0 !important;
+                    width: auto !important;
+                    line-height: 0 !important;
+                    font-size: 0 !important;
                     max-height: none !important;
                     overflow: visible !important;
+                    row-gap: 0 !important;
+                    column-gap: 0 !important;
                 }
 
-                /* 确保按钮容器可以正确换行显示 */
-                .xg-right-grid xg-icon {
-                    display: inline-block !important;
-                    margin: -12px 0 !important;
+                /* 自定义工具栏按钮不再复用原生自动连播槽位样式，避免新版控制栏的固定宽度挤压文本 */
+                .xg-right-grid .dy-enhancer-toolbar-button {
+                    display: inline-flex !important;
+                    align-items: center;
+                    align-self: center;
+                    flex: 0 0 auto;
+                    width: auto !important;
+                    height: 22px !important;
+                    min-width: max-content !important;
+                    max-width: none !important;
+                    margin: 0 !important;
+                    vertical-align: middle;
                 }
-                .xg-right-grid xg-icon.xgplayer-autoplay-setting {
+                .xg-right-grid .dy-enhancer-toolbar-info {
+                    margin: 0 4px 0 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle {
+                    margin: 0 4px 0 0 !important;
+                    padding: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-icon {
+                    display: inline-flex;
+                    align-items: center;
+                    height: 22px !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-icon {
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-label {
+                    display: inline-flex;
+                    align-items: center;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    gap: 6px;
+                    white-space: nowrap;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-label {
+                    gap: 0;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-title {
+                    display: inline-flex;
+                    align-items: center;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    margin-left: 0;
+                    white-space: nowrap;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-title {
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous,
+                .xg-right-grid .immersive-switch,
+                .xg-right-grid .xgplayer-playclarity-setting,
+                .xg-right-grid .xgplayer-playback-setting {
+                    margin: 0 2px 0 0 !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    align-self: center !important;
+                }
+                .xg-right-grid .automatic-continuous {
+                    margin-left: -8px !important;
+                }
+                .xg-right-grid .immersive-switch {
+                    margin-left: -12px !important;
+                }
+                .xg-right-grid .xgplayer-playclarity-setting {
+                    margin-left: -8px !important;
+                }
+                .xg-right-grid .xgplayer-playback-setting {
+                    margin-left: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous .xgplayer-setting-label,
+                .xg-right-grid .immersive-switch .xgplayer-setting-label {
+                    gap: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous .xgplayer-setting-title,
+                .xg-right-grid .immersive-switch .xgplayer-setting-title {
+                    margin-left: 0 !important;
+                }
+                .xg-right-grid .automatic-continuous .xgplayer-icon,
+                .xg-right-grid .immersive-switch .xgplayer-icon {
+                    padding-left: 0 !important;
+                    margin-left: 0 !important;
+                }
+                .xg-right-grid .xgplayer-playclarity-setting .btn,
+                .xg-right-grid .xgplayer-playback-setting .xgplayer-setting-playbackRatio {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    padding-left: 0 !important;
+                    padding-right: 2px !important;
+                    margin: 0 !important;
+                }
+                .xg-right-grid .xgplayer-playclarity-setting .gear,
+                .xg-right-grid .xgplayer-playclarity-setting .btnV2,
+                .xg-right-grid .xgplayer-playback-setting .xgplayer-slider,
+                .xg-right-grid .xgplayer-playback-setting .xgplayer-setting-content {
+                    min-height: 22px !important;
+                }
+                .xg-right-grid .xgplayer-fullscreen,
+                .xg-right-grid .xgplayer-page-full-screen,
+                .xg-right-grid .xgplayer-volume,
+                .xg-right-grid .xgplayer-shot,
+                .xg-right-grid .xgplayer-pip,
+                .xg-right-grid .xgplayer-watch-later,
+                .xg-right-grid .xg-options-icon {
+                    align-self: center !important;
+                    flex-shrink: 0 !important;
+                    margin-right: 4px !important;
+                    box-sizing: border-box !important;
+                }
+
+                /* 右侧工具栏整排统一节奏，避免遗漏单个原生按钮仍保留 24/32px 占位 */
+                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-pip):not(.xgplayer-watch-later) {
+                    flex: 0 0 auto !important;
+                    flex-shrink: 0 !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    align-self: center !important;
+                    box-sizing: border-box !important;
+                }
+                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-shot):not(.xgplayer-pip):not(.xgplayer-watch-later):not(.xg-options-icon) > .xgplayer-icon,
+                .xg-right-grid > xg-icon > .xgplayer-setting-playbackRatio,
+                .xg-right-grid > xg-icon > .gear,
+                .xg-right-grid > xg-icon > .btn-text,
+                .xg-right-grid > xg-icon:not(.xgplayer-watch-later) > .xgplayer-watch-later-item {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    box-sizing: border-box !important;
+                }
+                .xg-right-grid > xg-icon .btn-text,
+                .xg-right-grid > xg-icon .icon-text,
+                .xg-right-grid > xg-icon .xgplayer-setting-title,
+                .xg-right-grid > xg-icon .xgplayer-setting-playbackRatio,
+                .xg-right-grid > xg-icon .btn,
+                .xg-right-grid > xg-icon .btnV2 {
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    box-sizing: border-box !important;
+                }
+                .xg-right-grid > xg-icon .icon-text,
+                .xg-right-grid > xg-icon .btn-text span {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                }
+
+                /* 用容器级换行控制代替按钮负边距，避免两排被拉到上下两端 */
+                .xg-right-grid xg-icon {
+                    display: inline-flex !important;
+                    margin-top: -8px !important;
+                    margin-bottom: -8px !important;
+                    vertical-align: middle !important;
+                }
+                .xg-right-grid xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
                     margin-left: 2px !important;
                 }
 
-                /* 防止父容器限制高度导致内容被裁剪 */
+                /* 防止提示内容被播放器层裁剪 */
                 .xgplayer-controls {
                     overflow: visible !important;
                 }
 
-                /* 让控制栏底部区域高度自适应 */
+                /* 让控制栏底部区域高度自适应，容纳换行后的两排按钮 */
                 .xgplayer-controls-bottom {
                     height: auto !important;
                     min-height: 50px !important;
+                    overflow: visible !important;
                 }
 
                 /* 统计胶囊 Hover 提示 */
@@ -264,6 +436,7 @@ export class DouyinEnhancer {
 
                 /* 自定义开关，避免被播放器原生 xg-switch 状态干扰 */
                 .dy-enhancer-switch {
+                    align-self: center;
                     position: relative;
                     width: 24px;
                     min-width: 24px;
