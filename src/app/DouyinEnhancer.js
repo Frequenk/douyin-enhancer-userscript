@@ -94,22 +94,24 @@ export class DouyinEnhancer {
         injectStyles() {
             const style = document.createElement('style');
             style.innerHTML = `
-                /* 让右侧按钮容器高度自适应，防止按钮换行时被隐藏 */
-                .xg-right-grid {
+                /* 只让插件自己的按钮容器换行，避免抖音原生隐藏按钮被挤出来 */
+                .xg-right-grid .dy-enhancer-toolbar-group {
                     display: flex !important;
                     flex-wrap: wrap !important;
                     justify-content: flex-end !important;
                     align-items: center !important;
                     align-content: flex-end !important;
-                    height: auto !important;
-                    min-height: 0 !important;
-                    width: auto !important;
+                    flex: 0 1 auto !important;
+                    min-width: 0 !important;
+                    max-width: 100% !important;
                     line-height: 0 !important;
                     font-size: 0 !important;
-                    max-height: none !important;
                     overflow: visible !important;
                     row-gap: 0 !important;
                     column-gap: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-group:empty {
+                    display: none !important;
                 }
 
                 /* 自定义工具栏按钮不再复用原生自动连播槽位样式，避免新版控制栏的固定宽度挤压文本 */
@@ -231,8 +233,8 @@ export class DouyinEnhancer {
                     box-sizing: border-box !important;
                 }
 
-                /* 右侧工具栏整排统一节奏，避免遗漏单个原生按钮仍保留 24/32px 占位 */
-                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-pip):not(.xgplayer-watch-later) {
+                /* 插件按钮容器内部统一节奏 */
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
                     flex: 0 0 auto !important;
                     flex-shrink: 0 !important;
                     height: 22px !important;
@@ -241,11 +243,11 @@ export class DouyinEnhancer {
                     align-self: center !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-shot):not(.xgplayer-pip):not(.xgplayer-watch-later):not(.xg-options-icon) > .xgplayer-icon,
-                .xg-right-grid > xg-icon > .xgplayer-setting-playbackRatio,
-                .xg-right-grid > xg-icon > .gear,
-                .xg-right-grid > xg-icon > .btn-text,
-                .xg-right-grid > xg-icon:not(.xgplayer-watch-later) > .xgplayer-watch-later-item {
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-icon,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-setting-playbackRatio,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .gear,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .btn-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-watch-later-item {
                     display: inline-flex !important;
                     align-items: center !important;
                     height: 22px !important;
@@ -253,31 +255,31 @@ export class DouyinEnhancer {
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid > xg-icon .btn-text,
-                .xg-right-grid > xg-icon .icon-text,
-                .xg-right-grid > xg-icon .xgplayer-setting-title,
-                .xg-right-grid > xg-icon .xgplayer-setting-playbackRatio,
-                .xg-right-grid > xg-icon .btn,
-                .xg-right-grid > xg-icon .btnV2 {
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-title,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-playbackRatio,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btnV2 {
                     height: 22px !important;
                     min-height: 22px !important;
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid > xg-icon .icon-text,
-                .xg-right-grid > xg-icon .btn-text span {
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text span {
                     display: inline-flex !important;
                     align-items: center !important;
                 }
 
-                /* 用容器级换行控制代替按钮负边距，避免两排被拉到上下两端 */
-                .xg-right-grid xg-icon {
+                /* 用容器级换行控制代替整排改造，避免原生按钮被一起抬出来 */
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
                     display: inline-flex !important;
                     margin-top: -8px !important;
                     margin-bottom: -8px !important;
                     vertical-align: middle !important;
                 }
-                .xg-right-grid xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
+                .xg-right-grid .dy-enhancer-toolbar-group + xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
                     margin-left: 2px !important;
                 }
 
@@ -426,10 +428,10 @@ export class DouyinEnhancer {
                 }
 
                 /* 防止标题被图标遮挡 */
-                .xgplayer-setting-label {
+                .dy-enhancer-toolbar-button .xgplayer-setting-label {
                     align-items: center;
                 }
-                .xgplayer-setting-title {
+                .dy-enhancer-toolbar-button .xgplayer-setting-title {
                     margin-left: 6px;
                     white-space: nowrap;
                 }

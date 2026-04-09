@@ -498,11 +498,30 @@ export class UIFactory {
                 if (!parent) return;
                 const flexDirection = getComputedStyle(parent).flexDirection;
                 const isRowReverse = flexDirection === 'row-reverse';
-
                 const totalButtonCount = this.buttonConfigs.length;
+                let toolbarGroup = Array.from(parent.children).find(
+                    child => child.classList?.contains('dy-enhancer-toolbar-group')
+                );
+
+                if (!toolbarGroup) {
+                    toolbarGroup = document.createElement('div');
+                    toolbarGroup.className = 'dy-enhancer-toolbar-group';
+                }
+
+                if (anchor?.parentNode === parent) {
+                    parent.insertBefore(toolbarGroup, anchor);
+                } else if (toolbarGroup.parentNode !== parent) {
+                    parent.appendChild(toolbarGroup);
+                }
+
+                toolbarGroup.style.order = String(isRowReverse ? totalButtonCount + 1 : -(totalButtonCount + 1));
 
                 this.buttonConfigs.forEach((config, index) => {
-                    let button = parent.querySelector(`.${config.className}`);
+                    Array.from(parent.children)
+                        .filter(child => child !== toolbarGroup && child.classList?.contains(config.className))
+                        .forEach(child => child.remove());
+
+                    let button = toolbarGroup.querySelector(`.${config.className}`);
                     const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
                     if (!shouldRender) {
                         if (button) {
@@ -534,10 +553,9 @@ export class UIFactory {
                                 config.shortcut
                             );
                         }
-                        parent.insertBefore(button, anchor);
+                        toolbarGroup.appendChild(button);
                     }
-                    const customOrder = totalButtonCount - index;
-                    button.style.order = String(isRowReverse ? customOrder : -customOrder);
+                    button.style.order = String(index + 1);
                     if (config.type !== 'info') {
                         const isEnabled = this.config.isEnabled(config.configKey);
                         const switchEl = button.querySelector('.dy-enhancer-switch');
@@ -558,6 +576,10 @@ export class UIFactory {
                         }
                     }
                 });
+
+                if (!toolbarGroup.children.length) {
+                    toolbarGroup.remove();
+                }
             });
         }
 

@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.5
-// @changelog 适配抖音新版工具栏布局；自定义按钮顺序固定在左侧；窄宽下自动换行且不再溢出；按钮间距、尺寸与原生样式细节优化；
+// @version 4.6
+// @changelog 修复新版抖音底部工具栏中插件按钮顺序错乱，并避免误显示原生截图和字幕按钮；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -1146,8 +1146,28 @@
         const flexDirection = getComputedStyle(parent).flexDirection;
         const isRowReverse = flexDirection === "row-reverse";
         const totalButtonCount = this.buttonConfigs.length;
+        let toolbarGroup = Array.from(parent.children).find(
+          (child) => {
+            var _a;
+            return (_a = child.classList) == null ? void 0 : _a.contains("dy-enhancer-toolbar-group");
+          }
+        );
+        if (!toolbarGroup) {
+          toolbarGroup = document.createElement("div");
+          toolbarGroup.className = "dy-enhancer-toolbar-group";
+        }
+        if ((anchor == null ? void 0 : anchor.parentNode) === parent) {
+          parent.insertBefore(toolbarGroup, anchor);
+        } else if (toolbarGroup.parentNode !== parent) {
+          parent.appendChild(toolbarGroup);
+        }
+        toolbarGroup.style.order = String(isRowReverse ? totalButtonCount + 1 : -(totalButtonCount + 1));
         this.buttonConfigs.forEach((config, index) => {
-          let button = parent.querySelector(`.${config.className}`);
+          Array.from(parent.children).filter((child) => {
+            var _a;
+            return child !== toolbarGroup && ((_a = child.classList) == null ? void 0 : _a.contains(config.className));
+          }).forEach((child) => child.remove());
+          let button = toolbarGroup.querySelector(`.${config.className}`);
           const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
           if (!shouldRender) {
             if (button) {
@@ -1179,10 +1199,9 @@
                 config.shortcut
               );
             }
-            parent.insertBefore(button, anchor);
+            toolbarGroup.appendChild(button);
           }
-          const customOrder = totalButtonCount - index;
-          button.style.order = String(isRowReverse ? customOrder : -customOrder);
+          button.style.order = String(index + 1);
           if (config.type !== "info") {
             const isEnabled = this.config.isEnabled(config.configKey);
             const switchEl = button.querySelector(".dy-enhancer-switch");
@@ -1203,6 +1222,9 @@
             }
           }
         });
+        if (!toolbarGroup.children.length) {
+          toolbarGroup.remove();
+        }
       });
     }
     static updateToggleButtons(className, isEnabled) {
@@ -2714,22 +2736,24 @@
     injectStyles() {
       const style = document.createElement("style");
       style.innerHTML = `
-                /* \u8BA9\u53F3\u4FA7\u6309\u94AE\u5BB9\u5668\u9AD8\u5EA6\u81EA\u9002\u5E94\uFF0C\u9632\u6B62\u6309\u94AE\u6362\u884C\u65F6\u88AB\u9690\u85CF */
-                .xg-right-grid {
+                /* \u53EA\u8BA9\u63D2\u4EF6\u81EA\u5DF1\u7684\u6309\u94AE\u5BB9\u5668\u6362\u884C\uFF0C\u907F\u514D\u6296\u97F3\u539F\u751F\u9690\u85CF\u6309\u94AE\u88AB\u6324\u51FA\u6765 */
+                .xg-right-grid .dy-enhancer-toolbar-group {
                     display: flex !important;
                     flex-wrap: wrap !important;
                     justify-content: flex-end !important;
                     align-items: center !important;
                     align-content: flex-end !important;
-                    height: auto !important;
-                    min-height: 0 !important;
-                    width: auto !important;
+                    flex: 0 1 auto !important;
+                    min-width: 0 !important;
+                    max-width: 100% !important;
                     line-height: 0 !important;
                     font-size: 0 !important;
-                    max-height: none !important;
                     overflow: visible !important;
                     row-gap: 0 !important;
                     column-gap: 0 !important;
+                }
+                .xg-right-grid .dy-enhancer-toolbar-group:empty {
+                    display: none !important;
                 }
 
                 /* \u81EA\u5B9A\u4E49\u5DE5\u5177\u680F\u6309\u94AE\u4E0D\u518D\u590D\u7528\u539F\u751F\u81EA\u52A8\u8FDE\u64AD\u69FD\u4F4D\u6837\u5F0F\uFF0C\u907F\u514D\u65B0\u7248\u63A7\u5236\u680F\u7684\u56FA\u5B9A\u5BBD\u5EA6\u6324\u538B\u6587\u672C */
@@ -2851,8 +2875,8 @@
                     box-sizing: border-box !important;
                 }
 
-                /* \u53F3\u4FA7\u5DE5\u5177\u680F\u6574\u6392\u7EDF\u4E00\u8282\u594F\uFF0C\u907F\u514D\u9057\u6F0F\u5355\u4E2A\u539F\u751F\u6309\u94AE\u4ECD\u4FDD\u7559 24/32px \u5360\u4F4D */
-                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-pip):not(.xgplayer-watch-later) {
+                /* \u63D2\u4EF6\u6309\u94AE\u5BB9\u5668\u5185\u90E8\u7EDF\u4E00\u8282\u594F */
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
                     flex: 0 0 auto !important;
                     flex-shrink: 0 !important;
                     height: 22px !important;
@@ -2861,11 +2885,11 @@
                     align-self: center !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid > xg-icon:not(.xgplayer-fullscreen):not(.xgplayer-page-full-screen):not(.xgplayer-volume):not(.xgplayer-shot):not(.xgplayer-pip):not(.xgplayer-watch-later):not(.xg-options-icon) > .xgplayer-icon,
-                .xg-right-grid > xg-icon > .xgplayer-setting-playbackRatio,
-                .xg-right-grid > xg-icon > .gear,
-                .xg-right-grid > xg-icon > .btn-text,
-                .xg-right-grid > xg-icon:not(.xgplayer-watch-later) > .xgplayer-watch-later-item {
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-icon,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-setting-playbackRatio,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .gear,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .btn-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-watch-later-item {
                     display: inline-flex !important;
                     align-items: center !important;
                     height: 22px !important;
@@ -2873,31 +2897,31 @@
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid > xg-icon .btn-text,
-                .xg-right-grid > xg-icon .icon-text,
-                .xg-right-grid > xg-icon .xgplayer-setting-title,
-                .xg-right-grid > xg-icon .xgplayer-setting-playbackRatio,
-                .xg-right-grid > xg-icon .btn,
-                .xg-right-grid > xg-icon .btnV2 {
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-title,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-playbackRatio,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btnV2 {
                     height: 22px !important;
                     min-height: 22px !important;
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid > xg-icon .icon-text,
-                .xg-right-grid > xg-icon .btn-text span {
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text span {
                     display: inline-flex !important;
                     align-items: center !important;
                 }
 
-                /* \u7528\u5BB9\u5668\u7EA7\u6362\u884C\u63A7\u5236\u4EE3\u66FF\u6309\u94AE\u8D1F\u8FB9\u8DDD\uFF0C\u907F\u514D\u4E24\u6392\u88AB\u62C9\u5230\u4E0A\u4E0B\u4E24\u7AEF */
-                .xg-right-grid xg-icon {
+                /* \u7528\u5BB9\u5668\u7EA7\u6362\u884C\u63A7\u5236\u4EE3\u66FF\u6574\u6392\u6539\u9020\uFF0C\u907F\u514D\u539F\u751F\u6309\u94AE\u88AB\u4E00\u8D77\u62AC\u51FA\u6765 */
+                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
                     display: inline-flex !important;
                     margin-top: -8px !important;
                     margin-bottom: -8px !important;
                     vertical-align: middle !important;
                 }
-                .xg-right-grid xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
+                .xg-right-grid .dy-enhancer-toolbar-group + xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
                     margin-left: 2px !important;
                 }
 
@@ -3046,10 +3070,10 @@
                 }
 
                 /* \u9632\u6B62\u6807\u9898\u88AB\u56FE\u6807\u906E\u6321 */
-                .xgplayer-setting-label {
+                .dy-enhancer-toolbar-button .xgplayer-setting-label {
                     align-items: center;
                 }
-                .xgplayer-setting-title {
+                .dy-enhancer-toolbar-button .xgplayer-setting-title {
                     margin-left: 6px;
                     white-space: nowrap;
                 }
