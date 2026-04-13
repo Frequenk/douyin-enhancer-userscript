@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.6
-// @changelog 修复新版抖音底部工具栏中插件按钮顺序错乱，并避免误显示原生截图和字幕按钮；
+// @version 4.7
+// @changelog 修复统计面板年度热力图日期错位，并优化热力颜色层级显示；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License

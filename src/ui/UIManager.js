@@ -1190,8 +1190,8 @@ export class UIFactory {
             dataMap.forEach(value => {
                 if (value > max) max = value;
             });
-            const zeroColor = '#2a2a2a';
-            const colors = ['#dcfce7', '#4ade80', '#166534', '#052e16'];
+            const zeroColor = 'rgba(255,255,255,0.08)';
+            const colors = ['#16351f', '#245c33', '#33a852', '#9be9a8'];
             const gap = 2;
             const containerWidth = container.getBoundingClientRect().width || 0;
             const labelColWidth = 32;
@@ -1228,7 +1228,10 @@ export class UIFactory {
                     const date = new Date(year, 0, 1 + dayOffset);
                     const dateStr = `${year}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                     const value = dataMap.get(dateStr) || 0;
-                    const level = max === 0 ? 0 : Math.min(3, Math.floor((value / max) * 3));
+                    const intensity = max === 0 ? 0 : Math.sqrt(value / max);
+                    const level = intensity > 0
+                        ? Math.min(colors.length - 1, Math.floor(intensity * colors.length))
+                        : 0;
                     const title = `${dateStr} ${value}`;
                     const color = value === 0 ? zeroColor : colors[level];
                     cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${color}; border-radius: 2px;"></div>`);
@@ -1251,7 +1254,7 @@ export class UIFactory {
                         <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); gap: ${gap}px; margin-bottom: 6px;">
                             ${monthLabels.join('')}
                         </div>
-                        <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; width: 100%;">
+                        <div style="display: grid; grid-auto-flow: column; grid-template-columns: repeat(${weeks}, ${cellSize}px); grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; width: 100%;">
                             ${cells.join('')}
                         </div>
                     </div>

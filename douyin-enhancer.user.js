@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.6
-// @changelog 修复新版抖音底部工具栏中插件按钮顺序错乱，并避免误显示原生截图和字幕按钮；
+// @version 4.7
+// @changelog 修复统计面板年度热力图日期错位，并优化热力颜色层级显示；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -1793,8 +1793,8 @@
         if (value > max)
           max = value;
       });
-      const zeroColor = "#2a2a2a";
-      const colors = ["#dcfce7", "#4ade80", "#166534", "#052e16"];
+      const zeroColor = "rgba(255,255,255,0.08)";
+      const colors = ["#16351f", "#245c33", "#33a852", "#9be9a8"];
       const gap = 2;
       const containerWidth = container.getBoundingClientRect().width || 0;
       const labelColWidth = 32;
@@ -1828,7 +1828,8 @@
           const date = new Date(year, 0, 1 + dayOffset);
           const dateStr = `${year}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
           const value = dataMap.get(dateStr) || 0;
-          const level = max === 0 ? 0 : Math.min(3, Math.floor(value / max * 3));
+          const intensity = max === 0 ? 0 : Math.sqrt(value / max);
+          const level = intensity > 0 ? Math.min(colors.length - 1, Math.floor(intensity * colors.length)) : 0;
           const title = `${dateStr} ${value}`;
           const color = value === 0 ? zeroColor : colors[level];
           cells.push(`<div title="${title}" style="width: 100%; height: 100%; background: ${color}; border-radius: 2px;"></div>`);
@@ -1849,7 +1850,7 @@
                         <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); gap: ${gap}px; margin-bottom: 6px;">
                             ${monthLabels.join("")}
                         </div>
-                        <div style="display: grid; grid-template-columns: repeat(${weeks}, ${cellSize}px); grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; width: 100%;">
+                        <div style="display: grid; grid-auto-flow: column; grid-template-columns: repeat(${weeks}, ${cellSize}px); grid-template-rows: repeat(7, ${cellSize}px); gap: ${gap}px; width: 100%;">
                             ${cells.join("")}
                         </div>
                     </div>
