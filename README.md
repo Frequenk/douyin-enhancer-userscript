@@ -35,17 +35,3 @@
 
 - 在 [Greasy Fork](https://greasyfork.org/zh-CN/scripts/539942) 给个好评
 - 在 [GitHub](https://github.com/Frequenk/douyin-enhancer-userscript) 点个 Star
-- 也可以通过下面的二维码支持一下作者
-
-<table>
-  <tr>
-    <td align="center">
-      <strong>微信赞赏码 (一块两块也是爱, 人间自有真情在)</strong><br>
-      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zanshangma-2.png" alt="微信赞赏码" width="320">
-    </td>
-    <td align="center">
-      <strong>支付宝领红包 (一毛两毛不嫌少, 天若有情天亦老)</strong><br>
-      <img src="https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/zhifubaohongbao.png" alt="支付宝领红包" width="320">
-    </td>
-  </tr>
-</table>
