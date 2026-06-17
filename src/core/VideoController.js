@@ -62,7 +62,7 @@ export class VideoController {
             const lastActiveContainer = getBestVisibleElement(activeContainers);
             if (!lastActiveContainer) return '';
             const videoEl = lastActiveContainer.querySelector(SELECTORS.videoElement);
-            return videoEl?.src || '';
+            return videoEl?.src || videoEl?.currentSrc || '';
         }
 
         clearSkipCheck() {

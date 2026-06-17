@@ -506,9 +506,9 @@ export class DouyinEnhancer {
             }
 
             const videoEl = activeContainer.querySelector(SELECTORS.videoElement);
-            if (!videoEl || !videoEl.src) return;
+            if (!videoEl || !(videoEl.src || videoEl.currentSrc)) return;
 
-            const currentVideoUrl = videoEl.src;
+            const currentVideoUrl = videoEl.src || videoEl.currentSrc;
             this.trackWatchTime(videoEl);
 
             if (this.handleNewVideo(currentVideoUrl)) {
@@ -567,7 +567,9 @@ export class DouyinEnhancer {
                 }
             }
 
-            const playbackTime = Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
+            const playbackTime = (!videoEl.videoWidth || !videoEl.videoHeight)
+                ? (Date.now() - this.videoStartTime) / 1000
+                : (Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0);
             const targetSeconds = this.currentSpeedDuration ?? speedConfig.seconds;
 
             if (playbackTime >= targetSeconds) {
@@ -599,7 +601,8 @@ export class DouyinEnhancer {
             const videoPlayTime = Date.now() - this.videoStartTime;
 
             if (this.aiDetector.shouldCheck(videoPlayTime)) {
-                if (videoEl.readyState >= 2 && !videoEl.paused) {
+                const isImagePost = !videoEl.videoWidth || !videoEl.videoHeight;
+                if (isImagePost || (videoEl.readyState >= 2 && !videoEl.paused)) {
                     const timeInSeconds = (this.aiDetector.checkSchedule[this.aiDetector.currentCheckIndex] / 1000).toFixed(1);
                     console.log(`【AI检测】第${this.aiDetector.currentCheckIndex + 1}次检测，时间点：${timeInSeconds}秒`);
                     this.aiDetector.processVideo(videoEl);

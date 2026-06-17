@@ -33,7 +33,11 @@ export class AIDetector {
             this.isProcessing = true;
 
             try {
-                const base64Image = await this.captureVideoFrame(videoEl);
+                const base64Image = await this.captureFrame(videoEl);
+                if (!base64Image) {
+                    console.log('【AI检测】截图为空，等待下一轮重试');
+                    return;
+                }
                 const aiResponse = await this.callAI(base64Image);
                 this.handleResponse(aiResponse);
                 this.currentCheckIndex++;
@@ -49,6 +53,13 @@ export class AIDetector {
             } finally {
                 this.isProcessing = false;
             }
+        }
+
+        async captureFrame(videoEl) {
+            if (!videoEl.videoWidth || !videoEl.videoHeight) {
+                return await this.captureImageFrame(videoEl);
+            }
+            return this.captureVideoFrame(videoEl);
         }
 
         async captureVideoFrame(videoEl) {
@@ -72,6 +83,52 @@ export class AIDetector {
             ctx.drawImage(videoEl, 0, 0, targetWidth, targetHeight);
 
             return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+        }
+
+        async captureImageFrame(videoEl) {
+            const container = videoEl.closest("[data-e2e='feed-active-video']");
+            if (!container) return null;
+
+            const images = container.querySelectorAll('img[src*="aweme_images"]');
+            if (!images.length) return null;
+
+            const visibleImg = Array.from(images).find(img => {
+                const rect = img.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0 && rect.left >= -10;
+            }) || images[0];
+            if (!visibleImg.src) return null;
+
+            try {
+                const img = await this.loadImageCORS(visibleImg.src);
+                const maxSize = 500;
+                const aspectRatio = img.naturalWidth / img.naturalHeight;
+                let targetWidth, targetHeight;
+                if (img.naturalWidth > img.naturalHeight) {
+                    targetWidth = Math.min(img.naturalWidth, maxSize);
+                    targetHeight = Math.round(targetWidth / aspectRatio);
+                } else {
+                    targetHeight = Math.min(img.naturalHeight, maxSize);
+                    targetWidth = Math.round(targetHeight * aspectRatio);
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                canvas.getContext('2d').drawImage(img, 0, 0, targetWidth, targetHeight);
+                return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+            } catch (e) {
+                console.log('【AI检测】图集截图失败:', e.message);
+                return null;
+            }
+        }
+
+        loadImageCORS(url) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('图片加载失败(可能CORS受限)'));
+                img.src = url;
+            });
         }
 
         // 根据服务商选择调用方式

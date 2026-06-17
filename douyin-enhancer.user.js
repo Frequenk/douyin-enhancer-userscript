@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.7
-// @changelog 修复统计面板年度热力图日期错位，并优化热力颜色层级显示；
+// @version 4.8
+// @changelog 修复部分视频(source元素加载)无法识别导致极速模式/AI检测等功能频繁失效的问题；新增图集作品(图片类型)支持AI喜好检测和极速模式；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -368,12 +368,12 @@
 
   // src/core/selectors.js
   var SELECTORS = {
-    activeVideo: "[data-e2e='feed-active-video']:has(video[src])",
+    activeVideo: "[data-e2e='feed-active-video']:has(video[src], source[src])",
     resolutionOptions: ".xgplayer-playing div.virtual > div.item",
     accountName: '[data-e2e="feed-video-nickname"]',
     settingsPanel: "xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button)",
     adIndicator: 'svg[viewBox="0 0 30 16"]',
-    videoElement: "video[src]",
+    videoElement: "video",
     videoDesc: '[data-e2e="video-desc"]'
   };
 
@@ -464,7 +464,7 @@
       if (!lastActiveContainer)
         return "";
       const videoEl = lastActiveContainer.querySelector(SELECTORS.videoElement);
-      return (videoEl == null ? void 0 : videoEl.src) || "";
+      return (videoEl == null ? void 0 : videoEl.src) || (videoEl == null ? void 0 : videoEl.currentSrc) || "";
     }
     clearSkipCheck() {
       if (this.skipCheckInterval) {
@@ -2383,7 +2383,11 @@
         return;
       this.isProcessing = true;
       try {
-        const base64Image = await this.captureVideoFrame(videoEl);
+        const base64Image = await this.captureFrame(videoEl);
+        if (!base64Image) {
+          console.log("\u3010AI\u68C0\u6D4B\u3011\u622A\u56FE\u4E3A\u7A7A\uFF0C\u7B49\u5F85\u4E0B\u4E00\u8F6E\u91CD\u8BD5");
+          return;
+        }
         const aiResponse = await this.callAI(base64Image);
         this.handleResponse(aiResponse);
         this.currentCheckIndex++;
@@ -2397,6 +2401,12 @@
       } finally {
         this.isProcessing = false;
       }
+    }
+    async captureFrame(videoEl) {
+      if (!videoEl.videoWidth || !videoEl.videoHeight) {
+        return await this.captureImageFrame(videoEl);
+      }
+      return this.captureVideoFrame(videoEl);
     }
     async captureVideoFrame(videoEl) {
       const canvas = document.createElement("canvas");
@@ -2415,6 +2425,50 @@
       const ctx = canvas.getContext("2d");
       ctx.drawImage(videoEl, 0, 0, targetWidth, targetHeight);
       return canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+    }
+    async captureImageFrame(videoEl) {
+      const container = videoEl.closest("[data-e2e='feed-active-video']");
+      if (!container)
+        return null;
+      const images = container.querySelectorAll('img[src*="aweme_images"]');
+      if (!images.length)
+        return null;
+      const visibleImg = Array.from(images).find((img) => {
+        const rect = img.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && rect.left >= -10;
+      }) || images[0];
+      if (!visibleImg.src)
+        return null;
+      try {
+        const img = await this.loadImageCORS(visibleImg.src);
+        const maxSize = 500;
+        const aspectRatio = img.naturalWidth / img.naturalHeight;
+        let targetWidth, targetHeight;
+        if (img.naturalWidth > img.naturalHeight) {
+          targetWidth = Math.min(img.naturalWidth, maxSize);
+          targetHeight = Math.round(targetWidth / aspectRatio);
+        } else {
+          targetHeight = Math.min(img.naturalHeight, maxSize);
+          targetWidth = Math.round(targetHeight * aspectRatio);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        canvas.getContext("2d").drawImage(img, 0, 0, targetWidth, targetHeight);
+        return canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+      } catch (e) {
+        console.log("\u3010AI\u68C0\u6D4B\u3011\u56FE\u96C6\u622A\u56FE\u5931\u8D25:", e.message);
+        return null;
+      }
+    }
+    loadImageCORS(url) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("\u56FE\u7247\u52A0\u8F7D\u5931\u8D25(\u53EF\u80FDCORS\u53D7\u9650)"));
+        img.src = url;
+      });
     }
     // 根据服务商选择调用方式
     async callAI(base64Image) {
@@ -3146,9 +3200,9 @@
         return;
       }
       const videoEl = activeContainer.querySelector(SELECTORS.videoElement);
-      if (!videoEl || !videoEl.src)
+      if (!videoEl || !(videoEl.src || videoEl.currentSrc))
         return;
-      const currentVideoUrl = videoEl.src;
+      const currentVideoUrl = videoEl.src || videoEl.currentSrc;
       this.trackWatchTime(videoEl);
       if (this.handleNewVideo(currentVideoUrl)) {
         return;
@@ -3201,7 +3255,7 @@
           this.assignSpeedModeDuration(false);
         }
       }
-      const playbackTime = Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
+      const playbackTime = !videoEl.videoWidth || !videoEl.videoHeight ? (Date.now() - this.videoStartTime) / 1e3 : Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
       const targetSeconds = (_a = this.currentSpeedDuration) != null ? _a : speedConfig.seconds;
       if (playbackTime >= targetSeconds) {
         this.speedModeSkipped = true;
@@ -3229,7 +3283,8 @@
         return false;
       const videoPlayTime = Date.now() - this.videoStartTime;
       if (this.aiDetector.shouldCheck(videoPlayTime)) {
-        if (videoEl.readyState >= 2 && !videoEl.paused) {
+        const isImagePost = !videoEl.videoWidth || !videoEl.videoHeight;
+        if (isImagePost || videoEl.readyState >= 2 && !videoEl.paused) {
           const timeInSeconds = (this.aiDetector.checkSchedule[this.aiDetector.currentCheckIndex] / 1e3).toFixed(1);
           console.log(`\u3010AI\u68C0\u6D4B\u3011\u7B2C${this.aiDetector.currentCheckIndex + 1}\u6B21\u68C0\u6D4B\uFF0C\u65F6\u95F4\u70B9\uFF1A${timeInSeconds}\u79D2`);
           this.aiDetector.processVideo(videoEl);
