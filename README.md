@@ -1,6 +1,6 @@
 # 🎬 网页抖音体验增强
 
-[![Greasy Fork](https://img.shields.io/greasyfork/v/539942?label=Greasy%20Fork&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/539942)
+[![Greasy Fork installs](https://img.shields.io/greasyfork/dt/539942?label=Greasy%20Fork%20installs&logo=greasyfork&logoColor=white)](https://greasyfork.org/zh-CN/scripts/539942)
 [![GitHub stars](https://img.shields.io/github/stars/Frequenk/douyin-enhancer-userscript?style=flat&logo=github&label=Stars&color=white)](https://github.com/Frequenk/douyin-enhancer-userscript/stargazers)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
