@@ -28,12 +28,12 @@ export class AIDetector {
                 videoPlayTime >= this.checkSchedule[this.currentCheckIndex];
         }
 
-        async processVideo(videoEl) {
+        async processVideo(videoEl, container = null) {
             if (this.isProcessing || this.stopChecking || this.hasSkipped) return;
             this.isProcessing = true;
 
             try {
-                const base64Image = await this.captureFrame(videoEl);
+                const base64Image = await this.captureFrame(videoEl, container);
                 if (!base64Image) {
                     console.log('【AI检测】截图为空，等待下一轮重试');
                     return;
@@ -55,9 +55,9 @@ export class AIDetector {
             }
         }
 
-        async captureFrame(videoEl) {
-            if (!videoEl.videoWidth || !videoEl.videoHeight) {
-                return await this.captureImageFrame(videoEl);
+        async captureFrame(videoEl, container = null) {
+            if (!videoEl?.videoWidth || !videoEl?.videoHeight) {
+                return await this.captureImageFrame(videoEl, container);
             }
             return this.captureVideoFrame(videoEl);
         }
@@ -85,8 +85,8 @@ export class AIDetector {
             return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
         }
 
-        async captureImageFrame(videoEl) {
-            const container = videoEl.closest("[data-e2e='feed-active-video']");
+        async captureImageFrame(videoEl, container = null) {
+            container = container || videoEl?.closest?.("[data-e2e='feed-active-video']");
             if (!container) return null;
 
             const images = container.querySelectorAll('img[src*="aweme_images"]');

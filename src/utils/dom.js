@@ -40,4 +40,41 @@ export function isElementInViewport(el, text = "") {
         return bestCandidate;
     }
 
+    export function getVideoIdentity(container, videoEl = null) {
+        const containerId = container?.getAttribute?.('data-e2e-vid')
+            || container?.getAttribute?.('data-e2e-aweme-id');
+        const infoId = container?.querySelector?.('[data-e2e="video-info"]')
+            ?.getAttribute('data-e2e-aweme-id');
+        const videoId = containerId || infoId;
+
+        if (videoId) {
+            return `id:${videoId}`;
+        }
+
+        const directSrc = videoEl?.src || videoEl?.currentSrc;
+        if (directSrc) {
+            return directSrc;
+        }
+
+        const sourceEl = container?.querySelector?.('video[src], source[src]');
+        const sourceSrc = sourceEl?.src || sourceEl?.currentSrc;
+        return sourceSrc || '';
+    }
+
+    export function hasPlayableVideoSignal(videoEl) {
+        return Boolean(
+            videoEl
+            && (
+                videoEl.readyState >= 1
+                || videoEl.videoWidth > 0
+                || videoEl.videoHeight > 0
+                || Number.isFinite(videoEl.duration)
+            )
+        );
+    }
+
+    export function hasGalleryImages(container) {
+        return Boolean(container?.querySelector?.('img[src*="aweme_images"]'));
+    }
+
     // ========== 通知管理器 ==========

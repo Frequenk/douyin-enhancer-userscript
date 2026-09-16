@@ -25,6 +25,7 @@ export class ConfigManager {
                     enabled: this.getDefaultEnabledState('blockKeywords'),
                     key: 'blockKeywords',
                     keywords: this.loadKeywords(),
+                    keywordScopes: this.loadKeywordScopes(),
                     pressR: this.loadPressRSetting(),
                     blockName: this.loadBlockNameSetting(),
                     blockDesc: this.loadBlockDescSetting(),
@@ -139,8 +140,64 @@ export class ConfigManager {
             }, {});
         }
 
+        getDefaultKeywordScopes() {
+            return {
+                name: true,
+                desc: true,
+                tags: true
+            };
+        }
+
+        normalizeKeywordScopes(value) {
+            const source = value && typeof value === 'object' ? value : {};
+            return {
+                name: source.name !== false,
+                desc: source.desc !== false,
+                tags: source.tags !== false
+            };
+        }
+
         loadKeywords() {
-            return JSON.parse(localStorage.getItem('douyin_blocked_keywords') || '["店", "甄选"]');
+            let savedKeywords = [];
+            try {
+                savedKeywords = JSON.parse(localStorage.getItem('douyin_blocked_keywords') || '["店", "甄选"]');
+            } catch (error) {
+                savedKeywords = [];
+            }
+
+            return [...new Set(savedKeywords
+                .filter(keyword => typeof keyword === 'string')
+                .map(keyword => keyword.trim())
+                .filter(keyword => keyword.length > 0))];
+        }
+
+        loadKeywordScopes() {
+            let savedScopes = {};
+            try {
+                savedScopes = JSON.parse(localStorage.getItem('douyin_blocked_keyword_scopes') || '{}');
+            } catch (error) {
+                savedScopes = {};
+            }
+
+            if (!savedScopes || typeof savedScopes !== 'object' || Array.isArray(savedScopes)) {
+                return {};
+            }
+
+            return Object.keys(savedScopes).reduce((scopes, keyword) => {
+                if (typeof keyword === 'string' && keyword.trim()) {
+                    scopes[keyword.trim()] = this.normalizeKeywordScopes(savedScopes[keyword]);
+                }
+                return scopes;
+            }, {});
+        }
+
+        getKeywordScopes(keyword) {
+            const storedScopes = this.config.blockKeywords.keywordScopes || {};
+            return this.normalizeKeywordScopes(storedScopes[keyword]);
+        }
+
+        isKeywordScopeEnabled(keyword, scope) {
+            return this.getKeywordScopes(keyword)[scope] !== false;
         }
 
         loadAutoCleanScreenSetting() {
@@ -212,9 +269,20 @@ export class ConfigManager {
             return localStorage.getItem('douyin_block_tags_enabled') !== 'false'; // 默认开启
         }
 
-        saveKeywords(keywords) {
-            this.config.blockKeywords.keywords = keywords;
-            localStorage.setItem('douyin_blocked_keywords', JSON.stringify(keywords));
+        saveKeywords(keywords, scopes = {}) {
+            const normalizedKeywords = [...new Set(keywords
+                .filter(keyword => typeof keyword === 'string')
+                .map(keyword => keyword.trim())
+                .filter(keyword => keyword.length > 0))];
+            const normalizedScopes = normalizedKeywords.reduce((result, keyword) => {
+                result[keyword] = this.normalizeKeywordScopes(scopes[keyword]);
+                return result;
+            }, {});
+
+            this.config.blockKeywords.keywords = normalizedKeywords;
+            this.config.blockKeywords.keywordScopes = normalizedScopes;
+            localStorage.setItem('douyin_blocked_keywords', JSON.stringify(normalizedKeywords));
+            localStorage.setItem('douyin_blocked_keyword_scopes', JSON.stringify(normalizedScopes));
         }
 
         saveAutoCleanScreenSetting(enabled) {

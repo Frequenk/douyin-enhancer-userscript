@@ -118,12 +118,15 @@ export class UIFactory {
             return dialog;
         }
 
-        static createToggleButton(text, className, isEnabled, onToggle, onClick = null, shortcut = null) {
-            const btnContainer = document.createElement('xg-icon');
-            btnContainer.className = `xgplayer-autoplay-setting dy-enhancer-toolbar-button dy-enhancer-toolbar-toggle ${className}`;
+        static createToggleButton(text, className, isEnabled, onToggle, onClick = null, shortcut = null, hostTag = 'xg-icon') {
+            const btnContainer = document.createElement(hostTag);
+            const hostClass = hostTag === 'dy-icon'
+                ? 'douyin-player-autoplay-setting'
+                : 'xgplayer-autoplay-setting';
+            btnContainer.className = `${hostClass} dy-enhancer-toolbar-button dy-enhancer-toolbar-toggle ${className}`;
 
             const shortcutHint = shortcut
-                ? `<div class="xgTips"><span>${text.replace(/<[^>]*>/g, '')}</span><span class="shortcutKey">${shortcut}</span></div>`
+                ? `<div class="${hostTag === 'dy-icon' ? 'dyTips' : 'xgTips'}"><span>${text.replace(/<[^>]*>/g, '')}</span><span class="shortcutKey">${shortcut}</span></div>`
                 : '';
 
             btnContainer.innerHTML = `
@@ -136,26 +139,48 @@ export class UIFactory {
                     </div>
                 </div>${shortcutHint}`;
 
-            btnContainer.querySelector('button').addEventListener('click', (e) => {
+            const switchButton = btnContainer.querySelector('button');
+            const applyToggleState = (state) => {
+                UIManager.updateToggleButtons(className, state);
+                onToggle(state);
+            };
+            const toggleFromUser = () => {
+                const newState = switchButton.getAttribute('aria-checked') !== 'true';
+                applyToggleState(newState);
+            };
+
+            // 在 pointerdown 阶段接管，避免第一次点击被抖音播放器当作“唤醒控制栏”消耗。
+            btnContainer.addEventListener('pointerdown', (e) => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
                 e.preventDefault();
                 e.stopPropagation();
-                const newState = e.currentTarget.getAttribute('aria-checked') === 'false';
-                UIManager.updateToggleButtons(className, newState);
-                onToggle(newState);
-            });
-
-            if (onClick) {
-                btnContainer.querySelector('.xgplayer-setting-title').addEventListener('click', (e) => {
-                    e.stopPropagation();
+                const titleElement = e.target.closest('.xgplayer-setting-title');
+                if (onClick && titleElement) {
                     onClick();
-                });
-            }
+                    return;
+                }
+                switchButton.focus({ preventScroll: true });
+                toggleFromUser();
+            }, true);
+
+            // pointerdown 已完成操作，拦截后续 click，避免播放器层或默认行为重复处理。
+            btnContainer.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            }, true);
+
+            switchButton.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                e.stopPropagation();
+                toggleFromUser();
+            });
 
             return btnContainer;
         }
 
-        static createInfoButton(html, className, onClick = null) {
-            const btnContainer = document.createElement('xg-icon');
+        static createInfoButton(html, className, onClick = null, hostTag = 'xg-icon') {
+            const btnContainer = document.createElement(hostTag);
             btnContainer.className = `dy-enhancer-toolbar-button dy-enhancer-toolbar-info ${className}`;
             btnContainer.style.cursor = 'pointer';
 
@@ -496,6 +521,9 @@ export class UIFactory {
 
             parentEntries.forEach(({ parent, anchor }) => {
                 if (!parent) return;
+                const isLegacyToolbar = parent.classList?.contains('xg-right-grid')
+                    || anchor?.tagName?.toLowerCase() === 'xg-icon';
+                const hostTag = isLegacyToolbar ? 'xg-icon' : 'dy-icon';
                 const flexDirection = getComputedStyle(parent).flexDirection;
                 const isRowReverse = flexDirection === 'row-reverse';
                 const totalButtonCount = this.buttonConfigs.length;
@@ -522,6 +550,10 @@ export class UIFactory {
                         .forEach(child => child.remove());
 
                     let button = toolbarGroup.querySelector(`.${config.className}`);
+                    if (button && button.tagName !== hostTag.toUpperCase()) {
+                        button.remove();
+                        button = null;
+                    }
                     const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
                     if (!shouldRender) {
                         if (button) {
@@ -534,7 +566,8 @@ export class UIFactory {
                             button = UIFactory.createInfoButton(
                                 typeof config.getHtml === 'function' ? config.getHtml() : config.text,
                                 config.className,
-                                config.onClick
+                                config.onClick,
+                                hostTag
                             );
                         } else {
                             button = UIFactory.createToggleButton(
@@ -550,7 +583,8 @@ export class UIFactory {
                                     }
                                 },
                                 config.onClick,
-                                config.shortcut
+                                config.shortcut,
+                                hostTag
                             );
                         }
                         toolbarGroup.appendChild(button);
@@ -579,6 +613,15 @@ export class UIFactory {
 
                 if (!toolbarGroup.children.length) {
                     toolbarGroup.remove();
+                } else {
+                    const groupRect = toolbarGroup.getBoundingClientRect();
+                    const anchorRect = anchor?.getBoundingClientRect();
+                    const isWrapped = Boolean(
+                        anchorRect
+                        && groupRect.width > 0
+                        && groupRect.top > anchorRect.top + 1
+                    );
+                    toolbarGroup.classList.toggle('dy-enhancer-toolbar-group-wrapped', isWrapped);
                 }
             });
         }
@@ -1587,8 +1630,73 @@ export class UIFactory {
         }
 
         showKeywordDialog() {
-            const keywords = this.config.get('blockKeywords').keywords;
+            const blockConfig = this.config.get('blockKeywords');
+            const keywords = blockConfig.keywords;
             let tempKeywords = [...keywords];
+            let tempKeywordScopes = Object.fromEntries(tempKeywords.map(keyword => [
+                keyword,
+                this.config.normalizeKeywordScopes(blockConfig.keywordScopes[keyword])
+            ]));
+
+            const createDefaultKeywordScopes = () => this.config.getDefaultKeywordScopes();
+
+            const normalizeImportedEntries = (entries) => {
+                const normalized = [];
+                const seen = new Set();
+
+                entries.forEach(entry => {
+                    const keyword = typeof entry === 'string'
+                        ? entry.trim()
+                        : String(entry?.keyword ?? '').trim();
+                    const scopes = typeof entry === 'string'
+                        ? createDefaultKeywordScopes()
+                        : this.config.normalizeKeywordScopes(entry?.scopes);
+
+                    if (keyword && !seen.has(keyword)) {
+                        seen.add(keyword);
+                        normalized.push({ keyword, scopes });
+                    }
+                });
+
+                return normalized;
+            };
+
+            const mergeImportedEntries = (entries) => {
+                const imported = normalizeImportedEntries(entries);
+                if (!imported.length) {
+                    return false;
+                }
+
+                imported.forEach(({ keyword, scopes }) => {
+                    if (!Object.prototype.hasOwnProperty.call(tempKeywordScopes, keyword)) {
+                        tempKeywordScopes[keyword] = scopes;
+                    }
+                });
+                const allKeywords = [...new Set([...tempKeywords, ...imported.map(item => item.keyword)])];
+                tempKeywords.splice(0, tempKeywords.length, ...allKeywords);
+                return true;
+            };
+
+            const parseImportedContent = (content, fileName) => {
+                if (/\.json$/i.test(fileName)) {
+                    try {
+                        const parsed = JSON.parse(content);
+                        if (parsed?.type === 'douyin-enhancer-keywords'
+                            && parsed.version === 1
+                            && Array.isArray(parsed.keywords)) {
+                            return parsed.keywords;
+                        }
+                    } catch (error) {
+                        return null;
+                    }
+
+                    return null;
+                }
+
+                return content.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+            };
 
             const updateList = () => {
                 const container = document.querySelector('.keyword-list');
@@ -1597,21 +1705,58 @@ export class UIFactory {
                 container.innerHTML = tempKeywords.length === 0
                     ? '<div style="color: rgba(255, 255, 255, 0.5); text-align: center;">暂无关键字</div>'
                     : tempKeywords.map((keyword, index) => `
-                        <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                            <span style="flex: 1; color: white; padding: 5px 10px; background: rgba(255, 255, 255, 0.1);
-                                   border-radius: 4px; margin-right: 10px;">${keyword}</span>
-                            <button data-index="${index}" class="delete-keyword" style="padding: 5px 10px; background: #ff4757;
-                                    color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>
+                        <div class="keyword-item" style="margin-bottom: 8px; padding: 10px; background: rgba(255, 255, 255, 0.05);
+                               border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="flex: 1; color: white; padding: 6px 10px; background: rgba(255, 255, 255, 0.08);
+                                       border-radius: 4px;">${UIFactory.escapeHtml(keyword)}</span>
+                                <button data-index="${index}" class="delete-keyword" style="padding: 5px 10px; background: #ff4757;
+                                        color: white; border: none; border-radius: 4px; cursor: pointer;">删除</button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 14px; margin-top: 8px;
+                                   padding-left: 2px; color: rgba(255, 255, 255, 0.78); font-size: 12px;">
+                                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" data-index="${index}" data-scope="name"
+                                           class="keyword-scope-checkbox" ${tempKeywordScopes[keyword].name ? 'checked' : ''}
+                                           style="margin-right: 4px;">
+                                    名称
+                                </label>
+                                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" data-index="${index}" data-scope="desc"
+                                           class="keyword-scope-checkbox" ${tempKeywordScopes[keyword].desc ? 'checked' : ''}
+                                           style="margin-right: 4px;">
+                                    简介
+                                </label>
+                                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" data-index="${index}" data-scope="tags"
+                                           class="keyword-scope-checkbox" ${tempKeywordScopes[keyword].tags ? 'checked' : ''}
+                                           style="margin-right: 4px;">
+                                    标签
+                                </label>
+                            </div>
                         </div>
                     `).join('');
 
-                // 使用事件委托来处理删除按钮点击
+                // 使用事件委托来处理删除和单条关键字范围。
                 container.onclick = (e) => {
                     if (e.target.classList.contains('delete-keyword')) {
-                        e.stopPropagation(); // 阻止事件冒泡，防止触发弹窗关闭
+                        e.stopPropagation();
                         const index = parseInt(e.target.dataset.index);
+                        const keyword = tempKeywords[index];
+                        delete tempKeywordScopes[keyword];
                         tempKeywords.splice(index, 1);
                         updateList();
+                    }
+                };
+
+                container.onchange = (e) => {
+                    if (e.target.classList.contains('keyword-scope-checkbox')) {
+                        e.stopPropagation();
+                        const index = parseInt(e.target.dataset.index);
+                        const keyword = tempKeywords[index];
+                        if (tempKeywordScopes[keyword]) {
+                            tempKeywordScopes[keyword][e.target.dataset.scope] = e.target.checked;
+                        }
                     }
                 };
             };
@@ -1684,7 +1829,7 @@ export class UIFactory {
                 const blockDescCheckbox = dialog.querySelector('.block-desc-checkbox');
                 const blockTagsCheckbox = dialog.querySelector('.block-tags-checkbox');
 
-                this.config.saveKeywords(tempKeywords);
+                this.config.saveKeywords(tempKeywords, tempKeywordScopes);
                 this.config.savePressRSetting(pressRCheckbox.checked);
                 this.config.saveBlockNameSetting(blockNameCheckbox.checked);
                 this.config.saveBlockDescSetting(blockDescCheckbox.checked);
@@ -1699,6 +1844,7 @@ export class UIFactory {
                 const keyword = input.value.trim();
                 if (keyword && !tempKeywords.includes(keyword)) {
                     tempKeywords.push(keyword);
+                    tempKeywordScopes[keyword] = createDefaultKeywordScopes();
                     updateList();
                     input.value = '';
                 }
@@ -1736,12 +1882,19 @@ export class UIFactory {
 
             // 导出功能
             const exportKeywords = () => {
-                const content = tempKeywords.join('\n');
-                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const content = JSON.stringify({
+                    type: 'douyin-enhancer-keywords',
+                    version: 1,
+                    keywords: tempKeywords.map(keyword => ({
+                        keyword,
+                        scopes: tempKeywordScopes[keyword] || createDefaultKeywordScopes()
+                    }))
+                }, null, 2);
+                const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `抖音屏蔽关键字_${new Date().toISOString().split('T')[0]}.txt`;
+                a.download = `抖音屏蔽关键字_${new Date().toISOString().split('T')[0]}.json`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -1758,21 +1911,15 @@ export class UIFactory {
             const importKeywords = () => {
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = '.txt';
+                input.accept = '.json,.txt';
                 input.addEventListener('change', (e) => {
                     const file = e.target.files[0];
                     if (file) {
                         const reader = new FileReader();
                         reader.onload = (e) => {
                             const content = e.target.result;
-                            const importedKeywords = content.split('\n')
-                                .map(line => line.trim())
-                                .filter(line => line.length > 0);
-
-                            if (importedKeywords.length > 0) {
-                                // 合并关键字，去重
-                                const allKeywords = [...new Set([...tempKeywords, ...importedKeywords])];
-                                tempKeywords.splice(0, tempKeywords.length, ...allKeywords);
+                            const entries = parseImportedContent(content, file.name);
+                            if (entries && mergeImportedEntries(entries)) {
                                 updateList();
                                 this.notificationManager.showMessage('📁 屏蔽账号: 关键字导入成功');
                             } else {

@@ -1,5 +1,5 @@
 import { SELECTORS } from './selectors.js';
-import { getBestVisibleElement } from '../utils/dom.js';
+import { getBestVisibleElement, getVideoIdentity } from '../utils/dom.js';
 
 export class VideoController {
         constructor(notificationManager, statsTracker = null) {
@@ -17,7 +17,7 @@ export class VideoController {
             console.log(tip);
             if (!document.body) return;
 
-            const videoBefore = this.getCurrentVideoUrl();
+            const videoBefore = this.getCurrentVideoKey();
             this.sendKeyEvent('ArrowDown');
 
             this.clearSkipCheck();
@@ -57,12 +57,12 @@ export class VideoController {
             }
         }
 
-        getCurrentVideoUrl() {
+        getCurrentVideoKey() {
             const activeContainers = document.querySelectorAll(SELECTORS.activeVideo);
             const lastActiveContainer = getBestVisibleElement(activeContainers);
             if (!lastActiveContainer) return '';
             const videoEl = lastActiveContainer.querySelector(SELECTORS.videoElement);
-            return videoEl?.src || videoEl?.currentSrc || '';
+            return getVideoIdentity(lastActiveContainer, videoEl);
         }
 
         clearSkipCheck() {
@@ -82,7 +82,7 @@ export class VideoController {
                 }
 
                 this.skipAttemptCount++;
-                const urlAfter = this.getCurrentVideoUrl();
+                const urlAfter = this.getCurrentVideoKey();
                 if (urlAfter && urlAfter !== urlBefore) {
                     console.log('视频已成功切换');
                     this.clearSkipCheck();

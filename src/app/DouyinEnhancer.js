@@ -4,7 +4,13 @@ import { VideoController } from '../core/VideoController.js';
 import { UIManager } from '../ui/UIManager.js';
 import { AIDetector } from '../ai/AIDetector.js';
 import { VideoDetectionStrategies } from '../core/VideoDetectionStrategies.js';
-import { isElementInViewport, getBestVisibleElement } from '../utils/dom.js';
+import {
+    isElementInViewport,
+    getBestVisibleElement,
+    getVideoIdentity,
+    hasGalleryImages,
+    hasPlayableVideoSignal
+} from '../utils/dom.js';
 import { SELECTORS } from '../core/selectors.js';
 import { StatsStore } from '../stats/StatsStore.js';
 import { StatsTracker } from '../stats/StatsTracker.js';
@@ -95,7 +101,7 @@ export class DouyinEnhancer {
             const style = document.createElement('style');
             style.innerHTML = `
                 /* 只让插件自己的按钮容器换行，避免抖音原生隐藏按钮被挤出来 */
-                .xg-right-grid .dy-enhancer-toolbar-group {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group {
                     display: flex !important;
                     flex-wrap: wrap !important;
                     justify-content: flex-end !important;
@@ -110,16 +116,21 @@ export class DouyinEnhancer {
                     row-gap: 0 !important;
                     column-gap: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group:empty {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group:empty {
                     display: none !important;
                 }
 
                 /* 自定义工具栏按钮不再复用原生自动连播槽位样式，避免新版控制栏的固定宽度挤压文本 */
-                .xg-right-grid .dy-enhancer-toolbar-button {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button {
                     display: inline-flex !important;
                     align-items: center;
                     align-self: center;
                     flex: 0 0 auto;
+                    cursor: pointer !important;
+                    pointer-events: auto !important;
+                    user-select: none !important;
+                    touch-action: manipulation !important;
+                    font-size: 14px;
                     width: auto !important;
                     height: 22px !important;
                     min-width: max-content !important;
@@ -127,23 +138,29 @@ export class DouyinEnhancer {
                     margin: 0 !important;
                     vertical-align: middle;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-info {
+                .dy-enhancer-toolbar-button :is(.xgplayer-icon, .xgplayer-setting-label, .xgplayer-setting-title, .dy-enhancer-switch) {
+                    pointer-events: auto !important;
+                }
+                .dy-enhancer-toolbar-button :is(.xgTips, .dyTips) {
+                    pointer-events: none !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-info {
                     margin: 0 4px 0 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle {
                     margin: 0 4px 0 0 !important;
                     padding: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button .xgplayer-icon {
                     display: inline-flex;
                     align-items: center;
                     height: 22px !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle .xgplayer-icon {
                     padding: 0 !important;
                     margin: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-label {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button .xgplayer-setting-label {
                     display: inline-flex;
                     align-items: center;
                     height: 22px !important;
@@ -152,20 +169,22 @@ export class DouyinEnhancer {
                     gap: 6px;
                     white-space: nowrap;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-label {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle .xgplayer-setting-label {
                     gap: 0;
                     padding: 0 !important;
                     margin: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-title {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button .xgplayer-setting-title {
                     display: inline-flex;
                     align-items: center;
+                    color: rgba(255, 255, 255, 0.9);
+                    font-size: 14px;
                     min-height: 22px !important;
                     line-height: 22px !important;
                     margin-left: 0;
                     white-space: nowrap;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-title {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle .xgplayer-setting-title {
                     padding: 0 !important;
                     margin: 0 !important;
                 }
@@ -234,7 +253,7 @@ export class DouyinEnhancer {
                 }
 
                 /* 插件按钮容器内部统一节奏 */
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) {
                     flex: 0 0 auto !important;
                     flex-shrink: 0 !important;
                     height: 22px !important;
@@ -243,11 +262,11 @@ export class DouyinEnhancer {
                     align-self: center !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-icon,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-setting-playbackRatio,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .gear,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .btn-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-watch-later-item {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .xgplayer-icon,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .xgplayer-setting-playbackRatio,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .gear,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .btn-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .xgplayer-watch-later-item {
                     display: inline-flex !important;
                     align-items: center !important;
                     height: 22px !important;
@@ -255,32 +274,143 @@ export class DouyinEnhancer {
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-title,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-playbackRatio,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btnV2 {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btn-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .icon-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .xgplayer-setting-title,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .xgplayer-setting-playbackRatio,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btn,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btnV2 {
                     height: 22px !important;
                     min-height: 22px !important;
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text span {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .icon-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btn-text span {
                     display: inline-flex !important;
                     align-items: center !important;
                 }
 
                 /* 用容器级换行控制代替整排改造，避免原生按钮被一起抬出来 */
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) {
                     display: inline-flex !important;
                     margin-top: -8px !important;
                     margin-bottom: -8px !important;
                     vertical-align: middle !important;
                 }
                 .xg-right-grid .dy-enhancer-toolbar-group + xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
-                    margin-left: 2px !important;
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group + dy-icon.douyin-player-autoplay-setting:not(.dy-enhancer-toolbar-button) {
+                    margin-left: 0 !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .speed-mode-button {
+                    margin-right: 2px !important;
+                }
+
+                /* 新版控制栏的 flex 行高与 xg-right-grid 不同，负边距会让换行行互相重叠 */
+                .douyin-player-controls-right {
+                    flex-wrap: wrap !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group {
+                    row-gap: 4px !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) {
+                    margin-top: 0 !important;
+                    margin-bottom: 0 !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group.dy-enhancer-toolbar-group-wrapped {
+                    margin-top: -7px !important;
+                }
+
+                /* 完整移植旧版 xg-right-grid 对原生控制按钮的紧凑布局优化 */
+                .douyin-player-controls-right .automatic-continuous,
+                .douyin-player-controls-right .immersive-switch,
+                .douyin-player-controls-right .douyin-player-playclarity-setting,
+                .douyin-player-controls-right .douyin-player-playback-setting {
+                    margin: 0 2px 0 0 !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    align-self: center !important;
+                }
+                .douyin-player-controls-right .automatic-continuous {
+                    margin-left: -8px !important;
+                }
+                .douyin-player-controls-right .immersive-switch {
+                    margin-left: -14px !important;
+                }
+                .douyin-player-controls-right .douyin-player-playclarity-setting {
+                    margin-left: -8px !important;
+                }
+                .douyin-player-controls-right .douyin-player-playback-setting {
+                    margin-left: 0 !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .automatic-continuous {
+                    padding-left: 0 !important;
+                    padding-right: 0 !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .automatic-continuous > :is(.xgplayer-icon, .douyin-player-icon) {
+                    display: flex !important;
+                    width: max-content !important;
+                    margin-right: auto !important;
+                    padding-right: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-setting-label,
+                .douyin-player-controls-right .immersive-switch .douyin-player-setting-label {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    gap: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-setting-title,
+                .douyin-player-controls-right .immersive-switch .douyin-player-setting-title {
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-icon,
+                .douyin-player-controls-right .immersive-switch .douyin-player-icon {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    padding-top: 0 !important;
+                    padding-bottom: 0 !important;
+                    box-sizing: border-box !important;
+                    padding-left: 0 !important;
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .douyin-player-playclarity-setting .btn,
+                .douyin-player-controls-right .douyin-player-playback-setting .douyin-player-setting-playbackRatio {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    padding-left: 0 !important;
+                    padding-right: 2px !important;
+                    margin: 0 !important;
+                }
+                .douyin-player-controls-right .douyin-player-playclarity-setting .gear,
+                .douyin-player-controls-right .douyin-player-playclarity-setting .btnV2,
+                .douyin-player-controls-right .douyin-player-playback-setting .douyin-player-slider,
+                .douyin-player-controls-right .douyin-player-playback-setting .douyin-player-setting-content {
+                    min-height: 22px !important;
+                }
+                .douyin-player-controls-right .douyin-player-fullscreen,
+                .douyin-player-controls-right .douyin-player-page-full-screen,
+                .douyin-player-controls-right .douyin-player-volume,
+                .douyin-player-controls-right .douyin-player-inpicture,
+                .douyin-player-controls-right .douyin-player-watch-later {
+                    align-self: center !important;
+                    flex-shrink: 0 !important;
+                    margin-right: 4px !important;
+                    box-sizing: border-box !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group + dy-icon.douyin-player-autoplay-setting:not(.dy-enhancer-toolbar-button) {
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-icon {
+                    display: flex !important;
                 }
 
                 /* 防止提示内容被播放器层裁剪 */
@@ -506,9 +636,14 @@ export class DouyinEnhancer {
             }
 
             const videoEl = activeContainer.querySelector(SELECTORS.videoElement);
-            if (!videoEl || !(videoEl.src || videoEl.currentSrc)) return;
+            const isGalleryPost = hasGalleryImages(activeContainer);
+            const hasPlayableVideo = hasPlayableVideoSignal(videoEl);
+            if (!videoEl && !isGalleryPost) return;
+            if (!hasPlayableVideo && !isGalleryPost) return;
 
-            const currentVideoUrl = videoEl.src || videoEl.currentSrc;
+            const currentVideoUrl = getVideoIdentity(activeContainer, videoEl);
+            if (!currentVideoUrl) return;
+
             this.trackWatchTime(videoEl);
 
             if (this.handleNewVideo(currentVideoUrl)) {
@@ -519,7 +654,7 @@ export class DouyinEnhancer {
                 return;
             }
 
-            if (this.handleAIDetection(videoEl)) {
+            if (this.handleAIDetection(videoEl, { activeContainer, hasPlayableVideo })) {
                 return;
             }
 
@@ -567,7 +702,7 @@ export class DouyinEnhancer {
                 }
             }
 
-            const playbackTime = (!videoEl.videoWidth || !videoEl.videoHeight)
+            const playbackTime = (!videoEl?.videoWidth || !videoEl?.videoHeight)
                 ? (Date.now() - this.videoStartTime) / 1000
                 : (Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0);
             const targetSeconds = this.currentSpeedDuration ?? speedConfig.seconds;
@@ -595,17 +730,23 @@ export class DouyinEnhancer {
             this.statsTracker.addWatchTime(deltaMs / 1000);
         }
 
-        handleAIDetection(videoEl) {
+        handleAIDetection(videoEl, { activeContainer, hasPlayableVideo } = {}) {
             if (!this.config.isEnabled('aiPreference')) return false;
 
             const videoPlayTime = Date.now() - this.videoStartTime;
 
             if (this.aiDetector.shouldCheck(videoPlayTime)) {
-                const isImagePost = !videoEl.videoWidth || !videoEl.videoHeight;
-                if (isImagePost || (videoEl.readyState >= 2 && !videoEl.paused)) {
+                const isImagePost = !hasPlayableVideo && hasGalleryImages(activeContainer || videoEl?.closest("[data-e2e='feed-active-video']"));
+                const isReadyToCheck = isImagePost
+                    || (
+                        videoEl
+                        && videoEl.readyState >= 2
+                        && !videoEl.paused
+                    );
+                if (isReadyToCheck) {
                     const timeInSeconds = (this.aiDetector.checkSchedule[this.aiDetector.currentCheckIndex] / 1000).toFixed(1);
                     console.log(`【AI检测】第${this.aiDetector.currentCheckIndex + 1}次检测，时间点：${timeInSeconds}秒`);
-                    this.aiDetector.processVideo(videoEl);
+                    this.aiDetector.processVideo(videoEl, activeContainer);
                     return true;
                 }
             }

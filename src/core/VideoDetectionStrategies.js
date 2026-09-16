@@ -1,4 +1,5 @@
 import { SELECTORS } from './selectors.js';
+import { UIManager } from '../ui/UIManager.js';
 
 export class VideoDetectionStrategies {
         constructor(config, videoController, notificationManager, statsTracker = null) {
@@ -48,7 +49,8 @@ export class VideoDetectionStrategies {
                 const accountEl = container.querySelector(SELECTORS.accountName);
                 const accountName = accountEl?.textContent.trim();
                 if (accountName) {
-                    matchedKeyword = keywords.find(kw => accountName.includes(kw));
+                    matchedKeyword = keywords.find(kw => accountName.includes(kw)
+                        && this.config.isKeywordScopeEnabled(kw, 'name'));
                     if (matchedKeyword) matchType = '名称';
                 }
             }
@@ -60,7 +62,8 @@ export class VideoDetectionStrategies {
                     // 获取纯文本，然后移除 #xxx 标签
                     const descText = descEl.textContent.replace(/#\S+/g, '').trim();
                     if (descText) {
-                        matchedKeyword = keywords.find(kw => descText.includes(kw));
+                        matchedKeyword = keywords.find(kw => descText.includes(kw)
+                            && this.config.isKeywordScopeEnabled(kw, 'desc'));
                         if (matchedKeyword) matchType = '简介';
                     }
                 }
@@ -74,7 +77,8 @@ export class VideoDetectionStrategies {
                     const tags = descEl.textContent.match(/#\S+/g) || [];
                     const tagsText = tags.join(' ');
                     if (tagsText) {
-                        matchedKeyword = keywords.find(kw => tagsText.includes(kw));
+                        matchedKeyword = keywords.find(kw => tagsText.includes(kw)
+                            && this.config.isKeywordScopeEnabled(kw, 'tags'));
                         if (matchedKeyword) matchType = '标签';
                     }
                 }

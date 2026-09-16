@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 4.8
-// @changelog 修复部分视频(source元素加载)无法识别导致极速模式/AI检测等功能频繁失效的问题；新增图集作品(图片类型)支持AI喜好检测和极速模式；
+// @version 4.9
+// @changelog 适配抖音新版播放器界面，优化工具栏布局、换行与点击；每个屏蔽关键字可单独设置名称/简介/标签范围；关键字导入导出升级为JSON并兼容旧TXT；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -103,6 +103,7 @@
           enabled: this.getDefaultEnabledState("blockKeywords"),
           key: "blockKeywords",
           keywords: this.loadKeywords(),
+          keywordScopes: this.loadKeywordScopes(),
           pressR: this.loadPressRSetting(),
           blockName: this.loadBlockNameSetting(),
           blockDesc: this.loadBlockDescSetting(),
@@ -204,8 +205,53 @@
         return states;
       }, {});
     }
+    getDefaultKeywordScopes() {
+      return {
+        name: true,
+        desc: true,
+        tags: true
+      };
+    }
+    normalizeKeywordScopes(value) {
+      const source = value && typeof value === "object" ? value : {};
+      return {
+        name: source.name !== false,
+        desc: source.desc !== false,
+        tags: source.tags !== false
+      };
+    }
     loadKeywords() {
-      return JSON.parse(localStorage.getItem("douyin_blocked_keywords") || '["\u5E97", "\u7504\u9009"]');
+      let savedKeywords = [];
+      try {
+        savedKeywords = JSON.parse(localStorage.getItem("douyin_blocked_keywords") || '["\u5E97", "\u7504\u9009"]');
+      } catch (error) {
+        savedKeywords = [];
+      }
+      return [...new Set(savedKeywords.filter((keyword) => typeof keyword === "string").map((keyword) => keyword.trim()).filter((keyword) => keyword.length > 0))];
+    }
+    loadKeywordScopes() {
+      let savedScopes = {};
+      try {
+        savedScopes = JSON.parse(localStorage.getItem("douyin_blocked_keyword_scopes") || "{}");
+      } catch (error) {
+        savedScopes = {};
+      }
+      if (!savedScopes || typeof savedScopes !== "object" || Array.isArray(savedScopes)) {
+        return {};
+      }
+      return Object.keys(savedScopes).reduce((scopes, keyword) => {
+        if (typeof keyword === "string" && keyword.trim()) {
+          scopes[keyword.trim()] = this.normalizeKeywordScopes(savedScopes[keyword]);
+        }
+        return scopes;
+      }, {});
+    }
+    getKeywordScopes(keyword) {
+      const storedScopes = this.config.blockKeywords.keywordScopes || {};
+      return this.normalizeKeywordScopes(storedScopes[keyword]);
+    }
+    isKeywordScopeEnabled(keyword, scope) {
+      return this.getKeywordScopes(keyword)[scope] !== false;
     }
     loadAutoCleanScreenSetting() {
       return localStorage.getItem("douyin_auto_clean_screen_enabled") === "true";
@@ -259,9 +305,16 @@
     loadBlockTagsSetting() {
       return localStorage.getItem("douyin_block_tags_enabled") !== "false";
     }
-    saveKeywords(keywords) {
-      this.config.blockKeywords.keywords = keywords;
-      localStorage.setItem("douyin_blocked_keywords", JSON.stringify(keywords));
+    saveKeywords(keywords, scopes = {}) {
+      const normalizedKeywords = [...new Set(keywords.filter((keyword) => typeof keyword === "string").map((keyword) => keyword.trim()).filter((keyword) => keyword.length > 0))];
+      const normalizedScopes = normalizedKeywords.reduce((result, keyword) => {
+        result[keyword] = this.normalizeKeywordScopes(scopes[keyword]);
+        return result;
+      }, {});
+      this.config.blockKeywords.keywords = normalizedKeywords;
+      this.config.blockKeywords.keywordScopes = normalizedScopes;
+      localStorage.setItem("douyin_blocked_keywords", JSON.stringify(normalizedKeywords));
+      localStorage.setItem("douyin_blocked_keyword_scopes", JSON.stringify(normalizedScopes));
     }
     saveAutoCleanScreenSetting(enabled) {
       this.config.autoCleanScreen.enabled = enabled;
@@ -368,10 +421,16 @@
 
   // src/core/selectors.js
   var SELECTORS = {
-    activeVideo: "[data-e2e='feed-active-video']:has(video[src], source[src])",
-    resolutionOptions: ".xgplayer-playing div.virtual > div.item",
+    activeVideo: "[data-e2e='feed-active-video']",
+    resolutionOptions: [
+      ".xgplayer-playing div.virtual > div.item",
+      ".douyin-player-playclarity-setting .gear .virtual > .item"
+    ].join(", "),
     accountName: '[data-e2e="feed-video-nickname"]',
-    settingsPanel: "xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button)",
+    settingsPanel: [
+      "xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button)",
+      "dy-icon.douyin-player-autoplay-setting:not(.dy-enhancer-toolbar-button)"
+    ].join(", "),
     adIndicator: 'svg[viewBox="0 0 30 16"]',
     videoElement: "video",
     videoDesc: '[data-e2e="video-desc"]'
@@ -407,6 +466,31 @@
     }
     return bestCandidate;
   }
+  function getVideoIdentity(container, videoEl = null) {
+    var _a, _b, _c, _d, _e;
+    const containerId = ((_a = container == null ? void 0 : container.getAttribute) == null ? void 0 : _a.call(container, "data-e2e-vid")) || ((_b = container == null ? void 0 : container.getAttribute) == null ? void 0 : _b.call(container, "data-e2e-aweme-id"));
+    const infoId = (_d = (_c = container == null ? void 0 : container.querySelector) == null ? void 0 : _c.call(container, '[data-e2e="video-info"]')) == null ? void 0 : _d.getAttribute("data-e2e-aweme-id");
+    const videoId = containerId || infoId;
+    if (videoId) {
+      return `id:${videoId}`;
+    }
+    const directSrc = (videoEl == null ? void 0 : videoEl.src) || (videoEl == null ? void 0 : videoEl.currentSrc);
+    if (directSrc) {
+      return directSrc;
+    }
+    const sourceEl = (_e = container == null ? void 0 : container.querySelector) == null ? void 0 : _e.call(container, "video[src], source[src]");
+    const sourceSrc = (sourceEl == null ? void 0 : sourceEl.src) || (sourceEl == null ? void 0 : sourceEl.currentSrc);
+    return sourceSrc || "";
+  }
+  function hasPlayableVideoSignal(videoEl) {
+    return Boolean(
+      videoEl && (videoEl.readyState >= 1 || videoEl.videoWidth > 0 || videoEl.videoHeight > 0 || Number.isFinite(videoEl.duration))
+    );
+  }
+  function hasGalleryImages(container) {
+    var _a;
+    return Boolean((_a = container == null ? void 0 : container.querySelector) == null ? void 0 : _a.call(container, 'img[src*="aweme_images"]'));
+  }
 
   // src/core/VideoController.js
   var VideoController = class {
@@ -424,7 +508,7 @@
       console.log(tip);
       if (!document.body)
         return;
-      const videoBefore = this.getCurrentVideoUrl();
+      const videoBefore = this.getCurrentVideoKey();
       this.sendKeyEvent("ArrowDown");
       this.clearSkipCheck();
       this.startSkipCheck(videoBefore);
@@ -458,13 +542,13 @@
         console.log("\u53D1\u9001\u952E\u76D8\u4E8B\u4EF6\u5931\u8D25:", error);
       }
     }
-    getCurrentVideoUrl() {
+    getCurrentVideoKey() {
       const activeContainers = document.querySelectorAll(SELECTORS.activeVideo);
       const lastActiveContainer = getBestVisibleElement(activeContainers);
       if (!lastActiveContainer)
         return "";
       const videoEl = lastActiveContainer.querySelector(SELECTORS.videoElement);
-      return (videoEl == null ? void 0 : videoEl.src) || (videoEl == null ? void 0 : videoEl.currentSrc) || "";
+      return getVideoIdentity(lastActiveContainer, videoEl);
     }
     clearSkipCheck() {
       if (this.skipCheckInterval) {
@@ -481,7 +565,7 @@
           return;
         }
         this.skipAttemptCount++;
-        const urlAfter = this.getCurrentVideoUrl();
+        const urlAfter = this.getCurrentVideoKey();
         if (urlAfter && urlAfter !== urlBefore) {
           console.log("\u89C6\u9891\u5DF2\u6210\u529F\u5207\u6362");
           this.clearSkipCheck();
@@ -800,10 +884,11 @@
       }, 100);
       return dialog;
     }
-    static createToggleButton(text, className, isEnabled, onToggle, onClick = null, shortcut = null) {
-      const btnContainer = document.createElement("xg-icon");
-      btnContainer.className = `xgplayer-autoplay-setting dy-enhancer-toolbar-button dy-enhancer-toolbar-toggle ${className}`;
-      const shortcutHint = shortcut ? `<div class="xgTips"><span>${text.replace(/<[^>]*>/g, "")}</span><span class="shortcutKey">${shortcut}</span></div>` : "";
+    static createToggleButton(text, className, isEnabled, onToggle, onClick = null, shortcut = null, hostTag = "xg-icon") {
+      const btnContainer = document.createElement(hostTag);
+      const hostClass = hostTag === "dy-icon" ? "douyin-player-autoplay-setting" : "xgplayer-autoplay-setting";
+      btnContainer.className = `${hostClass} dy-enhancer-toolbar-button dy-enhancer-toolbar-toggle ${className}`;
+      const shortcutHint = shortcut ? `<div class="${hostTag === "dy-icon" ? "dyTips" : "xgTips"}"><span>${text.replace(/<[^>]*>/g, "")}</span><span class="shortcutKey">${shortcut}</span></div>` : "";
       btnContainer.innerHTML = `
                 <div class="xgplayer-icon">
                     <div class="xgplayer-setting-label">
@@ -813,23 +898,43 @@
                         <span class="xgplayer-setting-title" style="${onClick ? "cursor: pointer; text-decoration: underline;" : ""}">${text}</span>
                     </div>
                 </div>${shortcutHint}`;
-      btnContainer.querySelector("button").addEventListener("click", (e) => {
+      const switchButton = btnContainer.querySelector("button");
+      const applyToggleState = (state) => {
+        UIManager.updateToggleButtons(className, state);
+        onToggle(state);
+      };
+      const toggleFromUser = () => {
+        const newState = switchButton.getAttribute("aria-checked") !== "true";
+        applyToggleState(newState);
+      };
+      btnContainer.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0)
+          return;
         e.preventDefault();
         e.stopPropagation();
-        const newState = e.currentTarget.getAttribute("aria-checked") === "false";
-        UIManager2.updateToggleButtons(className, newState);
-        onToggle(newState);
-      });
-      if (onClick) {
-        btnContainer.querySelector(".xgplayer-setting-title").addEventListener("click", (e) => {
-          e.stopPropagation();
+        const titleElement = e.target.closest(".xgplayer-setting-title");
+        if (onClick && titleElement) {
           onClick();
-        });
-      }
+          return;
+        }
+        switchButton.focus({ preventScroll: true });
+        toggleFromUser();
+      }, true);
+      btnContainer.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+      switchButton.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ")
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFromUser();
+      });
       return btnContainer;
     }
-    static createInfoButton(html, className, onClick = null) {
-      const btnContainer = document.createElement("xg-icon");
+    static createInfoButton(html, className, onClick = null, hostTag = "xg-icon") {
+      const btnContainer = document.createElement(hostTag);
       btnContainer.className = `dy-enhancer-toolbar-button dy-enhancer-toolbar-info ${className}`;
       btnContainer.style.cursor = "pointer";
       btnContainer.innerHTML = `
@@ -1044,7 +1149,7 @@
       });
     }
   };
-  var UIManager2 = class {
+  var UIManager = class {
     constructor(config, videoController, notificationManager, statsTracker = null) {
       this.config = config;
       this.videoController = videoController;
@@ -1141,15 +1246,18 @@
         return entries;
       }, []);
       parentEntries.forEach(({ parent, anchor }) => {
+        var _a, _b;
         if (!parent)
           return;
+        const isLegacyToolbar = ((_a = parent.classList) == null ? void 0 : _a.contains("xg-right-grid")) || ((_b = anchor == null ? void 0 : anchor.tagName) == null ? void 0 : _b.toLowerCase()) === "xg-icon";
+        const hostTag = isLegacyToolbar ? "xg-icon" : "dy-icon";
         const flexDirection = getComputedStyle(parent).flexDirection;
         const isRowReverse = flexDirection === "row-reverse";
         const totalButtonCount = this.buttonConfigs.length;
         let toolbarGroup = Array.from(parent.children).find(
           (child) => {
-            var _a;
-            return (_a = child.classList) == null ? void 0 : _a.contains("dy-enhancer-toolbar-group");
+            var _a2;
+            return (_a2 = child.classList) == null ? void 0 : _a2.contains("dy-enhancer-toolbar-group");
           }
         );
         if (!toolbarGroup) {
@@ -1164,10 +1272,14 @@
         toolbarGroup.style.order = String(isRowReverse ? totalButtonCount + 1 : -(totalButtonCount + 1));
         this.buttonConfigs.forEach((config, index) => {
           Array.from(parent.children).filter((child) => {
-            var _a;
-            return child !== toolbarGroup && ((_a = child.classList) == null ? void 0 : _a.contains(config.className));
+            var _a2;
+            return child !== toolbarGroup && ((_a2 = child.classList) == null ? void 0 : _a2.contains(config.className));
           }).forEach((child) => child.remove());
           let button = toolbarGroup.querySelector(`.${config.className}`);
+          if (button && button.tagName !== hostTag.toUpperCase()) {
+            button.remove();
+            button = null;
+          }
           const shouldRender = !config.defaultStateKey || this.config.isButtonVisibleInCurrentSession(config.defaultStateKey);
           if (!shouldRender) {
             if (button) {
@@ -1180,7 +1292,8 @@
               button = UIFactory.createInfoButton(
                 typeof config.getHtml === "function" ? config.getHtml() : config.text,
                 config.className,
-                config.onClick
+                config.onClick,
+                hostTag
               );
             } else {
               button = UIFactory.createToggleButton(
@@ -1196,7 +1309,8 @@
                   }
                 },
                 config.onClick,
-                config.shortcut
+                config.shortcut,
+                hostTag
               );
             }
             toolbarGroup.appendChild(button);
@@ -1224,6 +1338,13 @@
         });
         if (!toolbarGroup.children.length) {
           toolbarGroup.remove();
+        } else {
+          const groupRect = toolbarGroup.getBoundingClientRect();
+          const anchorRect = anchor == null ? void 0 : anchor.getBoundingClientRect();
+          const isWrapped = Boolean(
+            anchorRect && groupRect.width > 0 && groupRect.top > anchorRect.top + 1
+          );
+          toolbarGroup.classList.toggle("dy-enhancer-toolbar-group-wrapped", isWrapped);
         }
       });
     }
@@ -2138,26 +2259,110 @@
       });
     }
     showKeywordDialog() {
-      const keywords = this.config.get("blockKeywords").keywords;
+      const blockConfig = this.config.get("blockKeywords");
+      const keywords = blockConfig.keywords;
       let tempKeywords = [...keywords];
+      let tempKeywordScopes = Object.fromEntries(tempKeywords.map((keyword) => [
+        keyword,
+        this.config.normalizeKeywordScopes(blockConfig.keywordScopes[keyword])
+      ]));
+      const createDefaultKeywordScopes = () => this.config.getDefaultKeywordScopes();
+      const normalizeImportedEntries = (entries) => {
+        const normalized = [];
+        const seen = /* @__PURE__ */ new Set();
+        entries.forEach((entry) => {
+          var _a;
+          const keyword = typeof entry === "string" ? entry.trim() : String((_a = entry == null ? void 0 : entry.keyword) != null ? _a : "").trim();
+          const scopes = typeof entry === "string" ? createDefaultKeywordScopes() : this.config.normalizeKeywordScopes(entry == null ? void 0 : entry.scopes);
+          if (keyword && !seen.has(keyword)) {
+            seen.add(keyword);
+            normalized.push({ keyword, scopes });
+          }
+        });
+        return normalized;
+      };
+      const mergeImportedEntries = (entries) => {
+        const imported = normalizeImportedEntries(entries);
+        if (!imported.length) {
+          return false;
+        }
+        imported.forEach(({ keyword, scopes }) => {
+          if (!Object.prototype.hasOwnProperty.call(tempKeywordScopes, keyword)) {
+            tempKeywordScopes[keyword] = scopes;
+          }
+        });
+        const allKeywords = [.../* @__PURE__ */ new Set([...tempKeywords, ...imported.map((item) => item.keyword)])];
+        tempKeywords.splice(0, tempKeywords.length, ...allKeywords);
+        return true;
+      };
+      const parseImportedContent = (content2, fileName) => {
+        if (/\.json$/i.test(fileName)) {
+          try {
+            const parsed = JSON.parse(content2);
+            if ((parsed == null ? void 0 : parsed.type) === "douyin-enhancer-keywords" && parsed.version === 1 && Array.isArray(parsed.keywords)) {
+              return parsed.keywords;
+            }
+          } catch (error) {
+            return null;
+          }
+          return null;
+        }
+        return content2.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+      };
       const updateList = () => {
         const container = document.querySelector(".keyword-list");
         if (!container)
           return;
         container.innerHTML = tempKeywords.length === 0 ? '<div style="color: rgba(255, 255, 255, 0.5); text-align: center;">\u6682\u65E0\u5173\u952E\u5B57</div>' : tempKeywords.map((keyword, index) => `
-                        <div style="display: flex; align-items: center; margin-bottom: 8px;">
-                            <span style="flex: 1; color: white; padding: 5px 10px; background: rgba(255, 255, 255, 0.1);
-                                   border-radius: 4px; margin-right: 10px;">${keyword}</span>
-                            <button data-index="${index}" class="delete-keyword" style="padding: 5px 10px; background: #ff4757;
-                                    color: white; border: none; border-radius: 4px; cursor: pointer;">\u5220\u9664</button>
+                        <div class="keyword-item" style="margin-bottom: 8px; padding: 10px; background: rgba(255, 255, 255, 0.05);
+                               border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="flex: 1; color: white; padding: 6px 10px; background: rgba(255, 255, 255, 0.08);
+                                       border-radius: 4px;">${UIFactory.escapeHtml(keyword)}</span>
+                                <button data-index="${index}" class="delete-keyword" style="padding: 5px 10px; background: #ff4757;
+                                        color: white; border: none; border-radius: 4px; cursor: pointer;">\u5220\u9664</button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 14px; margin-top: 8px;
+                                   padding-left: 2px; color: rgba(255, 255, 255, 0.78); font-size: 12px;">
+                                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" data-index="${index}" data-scope="name"
+                                           class="keyword-scope-checkbox" ${tempKeywordScopes[keyword].name ? "checked" : ""}
+                                           style="margin-right: 4px;">
+                                    \u540D\u79F0
+                                </label>
+                                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" data-index="${index}" data-scope="desc"
+                                           class="keyword-scope-checkbox" ${tempKeywordScopes[keyword].desc ? "checked" : ""}
+                                           style="margin-right: 4px;">
+                                    \u7B80\u4ECB
+                                </label>
+                                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" data-index="${index}" data-scope="tags"
+                                           class="keyword-scope-checkbox" ${tempKeywordScopes[keyword].tags ? "checked" : ""}
+                                           style="margin-right: 4px;">
+                                    \u6807\u7B7E
+                                </label>
+                            </div>
                         </div>
                     `).join("");
         container.onclick = (e) => {
           if (e.target.classList.contains("delete-keyword")) {
             e.stopPropagation();
             const index = parseInt(e.target.dataset.index);
+            const keyword = tempKeywords[index];
+            delete tempKeywordScopes[keyword];
             tempKeywords.splice(index, 1);
             updateList();
+          }
+        };
+        container.onchange = (e) => {
+          if (e.target.classList.contains("keyword-scope-checkbox")) {
+            e.stopPropagation();
+            const index = parseInt(e.target.dataset.index);
+            const keyword = tempKeywords[index];
+            if (tempKeywordScopes[keyword]) {
+              tempKeywordScopes[keyword][e.target.dataset.scope] = e.target.checked;
+            }
           }
         };
       };
@@ -2226,7 +2431,7 @@
         const blockNameCheckbox = dialog.querySelector(".block-name-checkbox");
         const blockDescCheckbox = dialog.querySelector(".block-desc-checkbox");
         const blockTagsCheckbox = dialog.querySelector(".block-tags-checkbox");
-        this.config.saveKeywords(tempKeywords);
+        this.config.saveKeywords(tempKeywords, tempKeywordScopes);
         this.config.savePressRSetting(pressRCheckbox.checked);
         this.config.saveBlockNameSetting(blockNameCheckbox.checked);
         this.config.saveBlockDescSetting(blockDescCheckbox.checked);
@@ -2239,6 +2444,7 @@
         const keyword = input.value.trim();
         if (keyword && !tempKeywords.includes(keyword)) {
           tempKeywords.push(keyword);
+          tempKeywordScopes[keyword] = createDefaultKeywordScopes();
           updateList();
           input.value = "";
         }
@@ -2269,12 +2475,19 @@
         e.stopPropagation();
       });
       const exportKeywords = () => {
-        const content2 = tempKeywords.join("\n");
-        const blob = new Blob([content2], { type: "text/plain;charset=utf-8" });
+        const content2 = JSON.stringify({
+          type: "douyin-enhancer-keywords",
+          version: 1,
+          keywords: tempKeywords.map((keyword) => ({
+            keyword,
+            scopes: tempKeywordScopes[keyword] || createDefaultKeywordScopes()
+          }))
+        }, null, 2);
+        const blob = new Blob([content2], { type: "application/json;charset=utf-8" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `\u6296\u97F3\u5C4F\u853D\u5173\u952E\u5B57_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}.txt`;
+        a.download = `\u6296\u97F3\u5C4F\u853D\u5173\u952E\u5B57_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -2288,17 +2501,15 @@
       const importKeywords = () => {
         const input = document.createElement("input");
         input.type = "file";
-        input.accept = ".txt";
+        input.accept = ".json,.txt";
         input.addEventListener("change", (e) => {
           const file = e.target.files[0];
           if (file) {
             const reader = new FileReader();
             reader.onload = (e2) => {
               const content2 = e2.target.result;
-              const importedKeywords = content2.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
-              if (importedKeywords.length > 0) {
-                const allKeywords = [.../* @__PURE__ */ new Set([...tempKeywords, ...importedKeywords])];
-                tempKeywords.splice(0, tempKeywords.length, ...allKeywords);
+              const entries = parseImportedContent(content2, file.name);
+              if (entries && mergeImportedEntries(entries)) {
                 updateList();
                 this.notificationManager.showMessage("\u{1F4C1} \u5C4F\u853D\u8D26\u53F7: \u5173\u952E\u5B57\u5BFC\u5165\u6210\u529F");
               } else {
@@ -2378,12 +2589,12 @@
     shouldCheck(videoPlayTime) {
       return !this.isProcessing && !this.stopChecking && !this.hasSkipped && this.currentCheckIndex < this.checkSchedule.length && videoPlayTime >= this.checkSchedule[this.currentCheckIndex];
     }
-    async processVideo(videoEl) {
+    async processVideo(videoEl, container = null) {
       if (this.isProcessing || this.stopChecking || this.hasSkipped)
         return;
       this.isProcessing = true;
       try {
-        const base64Image = await this.captureFrame(videoEl);
+        const base64Image = await this.captureFrame(videoEl, container);
         if (!base64Image) {
           console.log("\u3010AI\u68C0\u6D4B\u3011\u622A\u56FE\u4E3A\u7A7A\uFF0C\u7B49\u5F85\u4E0B\u4E00\u8F6E\u91CD\u8BD5");
           return;
@@ -2396,15 +2607,15 @@
         const provider = this.config.get("aiPreference").provider;
         UIFactory.showErrorDialog(provider, this.extractErrorDetails(provider, error));
         this.config.setEnabled("aiPreference", false);
-        UIManager2.updateToggleButtons("ai-preference-button", false);
+        UIManager.updateToggleButtons("ai-preference-button", false);
         this.stopChecking = true;
       } finally {
         this.isProcessing = false;
       }
     }
-    async captureFrame(videoEl) {
-      if (!videoEl.videoWidth || !videoEl.videoHeight) {
-        return await this.captureImageFrame(videoEl);
+    async captureFrame(videoEl, container = null) {
+      if (!(videoEl == null ? void 0 : videoEl.videoWidth) || !(videoEl == null ? void 0 : videoEl.videoHeight)) {
+        return await this.captureImageFrame(videoEl, container);
       }
       return this.captureVideoFrame(videoEl);
     }
@@ -2426,8 +2637,9 @@
       ctx.drawImage(videoEl, 0, 0, targetWidth, targetHeight);
       return canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
     }
-    async captureImageFrame(videoEl) {
-      const container = videoEl.closest("[data-e2e='feed-active-video']");
+    async captureImageFrame(videoEl, container = null) {
+      var _a;
+      container = container || ((_a = videoEl == null ? void 0 : videoEl.closest) == null ? void 0 : _a.call(videoEl, "[data-e2e='feed-active-video']"));
       if (!container)
         return null;
       const images = container.querySelectorAll('img[src*="aweme_images"]');
@@ -2633,7 +2845,7 @@
         const accountEl = container.querySelector(SELECTORS.accountName);
         const accountName = accountEl == null ? void 0 : accountEl.textContent.trim();
         if (accountName) {
-          matchedKeyword = keywords.find((kw) => accountName.includes(kw));
+          matchedKeyword = keywords.find((kw) => accountName.includes(kw) && this.config.isKeywordScopeEnabled(kw, "name"));
           if (matchedKeyword)
             matchType = "\u540D\u79F0";
         }
@@ -2643,7 +2855,7 @@
         if (descEl) {
           const descText = descEl.textContent.replace(/#\S+/g, "").trim();
           if (descText) {
-            matchedKeyword = keywords.find((kw) => descText.includes(kw));
+            matchedKeyword = keywords.find((kw) => descText.includes(kw) && this.config.isKeywordScopeEnabled(kw, "desc"));
             if (matchedKeyword)
               matchType = "\u7B80\u4ECB";
           }
@@ -2655,7 +2867,7 @@
           const tags = descEl.textContent.match(/#\S+/g) || [];
           const tagsText = tags.join(" ");
           if (tagsText) {
-            matchedKeyword = keywords.find((kw) => tagsText.includes(kw));
+            matchedKeyword = keywords.find((kw) => tagsText.includes(kw) && this.config.isKeywordScopeEnabled(kw, "tags"));
             if (matchedKeyword)
               matchType = "\u6807\u7B7E";
           }
@@ -2730,7 +2942,7 @@
       this.statsStore = new StatsStore();
       this.statsTracker = new StatsTracker(this.statsStore);
       this.videoController = new VideoController(this.notificationManager, this.statsTracker);
-      this.uiManager = new UIManager2(this.config, this.videoController, this.notificationManager, this.statsTracker);
+      this.uiManager = new UIManager(this.config, this.videoController, this.notificationManager, this.statsTracker);
       this.aiDetector = new AIDetector(this.videoController, this.config);
       this.strategies = new VideoDetectionStrategies(this.config, this.videoController, this.notificationManager, this.statsTracker);
       this.lastVideoUrl = "";
@@ -2756,7 +2968,7 @@
         if (e.key === "=") {
           const isEnabled = !this.config.isEnabled("skipLive");
           this.config.setEnabled("skipLive", isEnabled);
-          UIManager2.updateToggleButtons("skip-live-button", isEnabled);
+          UIManager.updateToggleButtons("skip-live-button", isEnabled);
           this.notificationManager.showMessage(`\u529F\u80FD\u5F00\u5173: \u8DF3\u8FC7\u76F4\u64AD\u5DF2 ${isEnabled ? "\u2705" : "\u274C"}`);
         }
       });
@@ -2792,7 +3004,7 @@
       const style = document.createElement("style");
       style.innerHTML = `
                 /* \u53EA\u8BA9\u63D2\u4EF6\u81EA\u5DF1\u7684\u6309\u94AE\u5BB9\u5668\u6362\u884C\uFF0C\u907F\u514D\u6296\u97F3\u539F\u751F\u9690\u85CF\u6309\u94AE\u88AB\u6324\u51FA\u6765 */
-                .xg-right-grid .dy-enhancer-toolbar-group {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group {
                     display: flex !important;
                     flex-wrap: wrap !important;
                     justify-content: flex-end !important;
@@ -2807,16 +3019,21 @@
                     row-gap: 0 !important;
                     column-gap: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group:empty {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group:empty {
                     display: none !important;
                 }
 
                 /* \u81EA\u5B9A\u4E49\u5DE5\u5177\u680F\u6309\u94AE\u4E0D\u518D\u590D\u7528\u539F\u751F\u81EA\u52A8\u8FDE\u64AD\u69FD\u4F4D\u6837\u5F0F\uFF0C\u907F\u514D\u65B0\u7248\u63A7\u5236\u680F\u7684\u56FA\u5B9A\u5BBD\u5EA6\u6324\u538B\u6587\u672C */
-                .xg-right-grid .dy-enhancer-toolbar-button {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button {
                     display: inline-flex !important;
                     align-items: center;
                     align-self: center;
                     flex: 0 0 auto;
+                    cursor: pointer !important;
+                    pointer-events: auto !important;
+                    user-select: none !important;
+                    touch-action: manipulation !important;
+                    font-size: 14px;
                     width: auto !important;
                     height: 22px !important;
                     min-width: max-content !important;
@@ -2824,23 +3041,29 @@
                     margin: 0 !important;
                     vertical-align: middle;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-info {
+                .dy-enhancer-toolbar-button :is(.xgplayer-icon, .xgplayer-setting-label, .xgplayer-setting-title, .dy-enhancer-switch) {
+                    pointer-events: auto !important;
+                }
+                .dy-enhancer-toolbar-button :is(.xgTips, .dyTips) {
+                    pointer-events: none !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-info {
                     margin: 0 4px 0 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle {
                     margin: 0 4px 0 0 !important;
                     padding: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button .xgplayer-icon {
                     display: inline-flex;
                     align-items: center;
                     height: 22px !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle .xgplayer-icon {
                     padding: 0 !important;
                     margin: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-label {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button .xgplayer-setting-label {
                     display: inline-flex;
                     align-items: center;
                     height: 22px !important;
@@ -2849,20 +3072,22 @@
                     gap: 6px;
                     white-space: nowrap;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-label {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle .xgplayer-setting-label {
                     gap: 0;
                     padding: 0 !important;
                     margin: 0 !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-button .xgplayer-setting-title {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-button .xgplayer-setting-title {
                     display: inline-flex;
                     align-items: center;
+                    color: rgba(255, 255, 255, 0.9);
+                    font-size: 14px;
                     min-height: 22px !important;
                     line-height: 22px !important;
                     margin-left: 0;
                     white-space: nowrap;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-toggle .xgplayer-setting-title {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-toggle .xgplayer-setting-title {
                     padding: 0 !important;
                     margin: 0 !important;
                 }
@@ -2931,7 +3156,7 @@
                 }
 
                 /* \u63D2\u4EF6\u6309\u94AE\u5BB9\u5668\u5185\u90E8\u7EDF\u4E00\u8282\u594F */
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) {
                     flex: 0 0 auto !important;
                     flex-shrink: 0 !important;
                     height: 22px !important;
@@ -2940,11 +3165,11 @@
                     align-self: center !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-icon,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-setting-playbackRatio,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .gear,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .btn-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon > .xgplayer-watch-later-item {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .xgplayer-icon,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .xgplayer-setting-playbackRatio,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .gear,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .btn-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) > .xgplayer-watch-later-item {
                     display: inline-flex !important;
                     align-items: center !important;
                     height: 22px !important;
@@ -2952,32 +3177,143 @@
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-title,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .xgplayer-setting-playbackRatio,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btnV2 {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btn-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .icon-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .xgplayer-setting-title,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .xgplayer-setting-playbackRatio,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btn,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btnV2 {
                     height: 22px !important;
                     min-height: 22px !important;
                     line-height: 22px !important;
                     box-sizing: border-box !important;
                 }
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .icon-text,
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon .btn-text span {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .icon-text,
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) .btn-text span {
                     display: inline-flex !important;
                     align-items: center !important;
                 }
 
                 /* \u7528\u5BB9\u5668\u7EA7\u6362\u884C\u63A7\u5236\u4EE3\u66FF\u6574\u6392\u6539\u9020\uFF0C\u907F\u514D\u539F\u751F\u6309\u94AE\u88AB\u4E00\u8D77\u62AC\u51FA\u6765 */
-                .xg-right-grid .dy-enhancer-toolbar-group > xg-icon {
+                :is(.xg-right-grid, .douyin-player-controls-right) .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) {
                     display: inline-flex !important;
                     margin-top: -8px !important;
                     margin-bottom: -8px !important;
                     vertical-align: middle !important;
                 }
                 .xg-right-grid .dy-enhancer-toolbar-group + xg-icon.xgplayer-autoplay-setting:not(.dy-enhancer-toolbar-button) {
-                    margin-left: 2px !important;
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group + dy-icon.douyin-player-autoplay-setting:not(.dy-enhancer-toolbar-button) {
+                    margin-left: 0 !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .speed-mode-button {
+                    margin-right: 2px !important;
+                }
+
+                /* \u65B0\u7248\u63A7\u5236\u680F\u7684 flex \u884C\u9AD8\u4E0E xg-right-grid \u4E0D\u540C\uFF0C\u8D1F\u8FB9\u8DDD\u4F1A\u8BA9\u6362\u884C\u884C\u4E92\u76F8\u91CD\u53E0 */
+                .douyin-player-controls-right {
+                    flex-wrap: wrap !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group {
+                    row-gap: 4px !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group > :is(xg-icon, dy-icon) {
+                    margin-top: 0 !important;
+                    margin-bottom: 0 !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group.dy-enhancer-toolbar-group-wrapped {
+                    margin-top: -7px !important;
+                }
+
+                /* \u5B8C\u6574\u79FB\u690D\u65E7\u7248 xg-right-grid \u5BF9\u539F\u751F\u63A7\u5236\u6309\u94AE\u7684\u7D27\u51D1\u5E03\u5C40\u4F18\u5316 */
+                .douyin-player-controls-right .automatic-continuous,
+                .douyin-player-controls-right .immersive-switch,
+                .douyin-player-controls-right .douyin-player-playclarity-setting,
+                .douyin-player-controls-right .douyin-player-playback-setting {
+                    margin: 0 2px 0 0 !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    align-self: center !important;
+                }
+                .douyin-player-controls-right .automatic-continuous {
+                    margin-left: -8px !important;
+                }
+                .douyin-player-controls-right .immersive-switch {
+                    margin-left: -14px !important;
+                }
+                .douyin-player-controls-right .douyin-player-playclarity-setting {
+                    margin-left: -8px !important;
+                }
+                .douyin-player-controls-right .douyin-player-playback-setting {
+                    margin-left: 0 !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .automatic-continuous {
+                    padding-left: 0 !important;
+                    padding-right: 0 !important;
+                }
+                :is(.xg-right-grid, .douyin-player-controls-right) .automatic-continuous > :is(.xgplayer-icon, .douyin-player-icon) {
+                    display: flex !important;
+                    width: max-content !important;
+                    margin-right: auto !important;
+                    padding-right: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-setting-label,
+                .douyin-player-controls-right .immersive-switch .douyin-player-setting-label {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    gap: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-setting-title,
+                .douyin-player-controls-right .immersive-switch .douyin-player-setting-title {
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-icon,
+                .douyin-player-controls-right .immersive-switch .douyin-player-icon {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    padding-top: 0 !important;
+                    padding-bottom: 0 !important;
+                    box-sizing: border-box !important;
+                    padding-left: 0 !important;
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .douyin-player-playclarity-setting .btn,
+                .douyin-player-controls-right .douyin-player-playback-setting .douyin-player-setting-playbackRatio {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    padding-left: 0 !important;
+                    padding-right: 2px !important;
+                    margin: 0 !important;
+                }
+                .douyin-player-controls-right .douyin-player-playclarity-setting .gear,
+                .douyin-player-controls-right .douyin-player-playclarity-setting .btnV2,
+                .douyin-player-controls-right .douyin-player-playback-setting .douyin-player-slider,
+                .douyin-player-controls-right .douyin-player-playback-setting .douyin-player-setting-content {
+                    min-height: 22px !important;
+                }
+                .douyin-player-controls-right .douyin-player-fullscreen,
+                .douyin-player-controls-right .douyin-player-page-full-screen,
+                .douyin-player-controls-right .douyin-player-volume,
+                .douyin-player-controls-right .douyin-player-inpicture,
+                .douyin-player-controls-right .douyin-player-watch-later {
+                    align-self: center !important;
+                    flex-shrink: 0 !important;
+                    margin-right: 4px !important;
+                    box-sizing: border-box !important;
+                }
+                .douyin-player-controls-right .dy-enhancer-toolbar-group + dy-icon.douyin-player-autoplay-setting:not(.dy-enhancer-toolbar-button) {
+                    margin-left: 0 !important;
+                }
+                .douyin-player-controls-right .automatic-continuous .douyin-player-icon {
+                    display: flex !important;
                 }
 
                 /* \u9632\u6B62\u63D0\u793A\u5185\u5BB9\u88AB\u64AD\u653E\u5668\u5C42\u88C1\u526A */
@@ -3200,9 +3536,15 @@
         return;
       }
       const videoEl = activeContainer.querySelector(SELECTORS.videoElement);
-      if (!videoEl || !(videoEl.src || videoEl.currentSrc))
+      const isGalleryPost = hasGalleryImages(activeContainer);
+      const hasPlayableVideo = hasPlayableVideoSignal(videoEl);
+      if (!videoEl && !isGalleryPost)
         return;
-      const currentVideoUrl = videoEl.src || videoEl.currentSrc;
+      if (!hasPlayableVideo && !isGalleryPost)
+        return;
+      const currentVideoUrl = getVideoIdentity(activeContainer, videoEl);
+      if (!currentVideoUrl)
+        return;
       this.trackWatchTime(videoEl);
       if (this.handleNewVideo(currentVideoUrl)) {
         return;
@@ -3210,7 +3552,7 @@
       if (this.handleSpeedMode(videoEl)) {
         return;
       }
-      if (this.handleAIDetection(videoEl)) {
+      if (this.handleAIDetection(videoEl, { activeContainer, hasPlayableVideo })) {
         return;
       }
       if (this.strategies.checkAd(activeContainer))
@@ -3255,7 +3597,7 @@
           this.assignSpeedModeDuration(false);
         }
       }
-      const playbackTime = !videoEl.videoWidth || !videoEl.videoHeight ? (Date.now() - this.videoStartTime) / 1e3 : Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
+      const playbackTime = !(videoEl == null ? void 0 : videoEl.videoWidth) || !(videoEl == null ? void 0 : videoEl.videoHeight) ? (Date.now() - this.videoStartTime) / 1e3 : Number.isFinite(videoEl.currentTime) ? videoEl.currentTime : 0;
       const targetSeconds = (_a = this.currentSpeedDuration) != null ? _a : speedConfig.seconds;
       if (playbackTime >= targetSeconds) {
         this.speedModeSkipped = true;
@@ -3278,16 +3620,17 @@
         return;
       this.statsTracker.addWatchTime(deltaMs / 1e3);
     }
-    handleAIDetection(videoEl) {
+    handleAIDetection(videoEl, { activeContainer, hasPlayableVideo } = {}) {
       if (!this.config.isEnabled("aiPreference"))
         return false;
       const videoPlayTime = Date.now() - this.videoStartTime;
       if (this.aiDetector.shouldCheck(videoPlayTime)) {
-        const isImagePost = !videoEl.videoWidth || !videoEl.videoHeight;
-        if (isImagePost || videoEl.readyState >= 2 && !videoEl.paused) {
+        const isImagePost = !hasPlayableVideo && hasGalleryImages(activeContainer || (videoEl == null ? void 0 : videoEl.closest("[data-e2e='feed-active-video']")));
+        const isReadyToCheck = isImagePost || videoEl && videoEl.readyState >= 2 && !videoEl.paused;
+        if (isReadyToCheck) {
           const timeInSeconds = (this.aiDetector.checkSchedule[this.aiDetector.currentCheckIndex] / 1e3).toFixed(1);
           console.log(`\u3010AI\u68C0\u6D4B\u3011\u7B2C${this.aiDetector.currentCheckIndex + 1}\u6B21\u68C0\u6D4B\uFF0C\u65F6\u95F4\u70B9\uFF1A${timeInSeconds}\u79D2`);
-          this.aiDetector.processVideo(videoEl);
+          this.aiDetector.processVideo(videoEl, activeContainer);
           return true;
         }
       }
