@@ -6,7 +6,7 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.0
+// @version 5.1
 // @changelog 适配抖音新版播放器界面，优化工具栏布局、换行与点击；每个屏蔽关键字可单独设置名称/简介/标签范围；关键字导入导出升级为JSON并兼容旧TXT；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
