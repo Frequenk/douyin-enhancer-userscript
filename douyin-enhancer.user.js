@@ -16,6 +16,8 @@
 // @updateURL https://update.greasyfork.org/scripts/539942/%E7%BD%91%E9%A1%B5%E6%8A%96%E9%9F%B3%E4%BD%93%E9%AA%8C%E5%A2%9E%E5%BC%BA.meta.js
 // ==/UserScript==
 
+// Webhook sync test
+
 (() => {
   // src/core/NotificationManager.js
   var NotificationManager = class {
