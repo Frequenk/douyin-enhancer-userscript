@@ -25,7 +25,7 @@ const PURIFICATION_KEY = 'douyin-enhancer-live-defaults';
 const PURIFICATION_OPTIONS = [
     { key: 'danmaku', label: '弹幕开关' },
     { key: 'giftDanmaku', label: '送礼信息', nativeLabel: '送礼信息' },
-    { key: 'lotteryDanmaku', label: '福袋', nativeLabel: '福袋口令' },
+    { key: 'lotteryDanmaku', label: '福袋口令', nativeLabel: '福袋口令' },
     { key: 'giftEffects', label: '屏蔽礼物特效', inverted: true }
 ];
 const PURIFICATION_GROUPS = [

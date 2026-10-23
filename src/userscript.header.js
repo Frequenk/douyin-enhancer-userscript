@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.2
-// @changelog 修复新版直播播放器最高清切换，确认画质生效后关闭自动切换；新增直播净化，可记忆弹幕开关、送礼信息、福袋及屏蔽礼物特效的进入默认值，初始化静默应用，不影响后续手动操作；
+// @version 5.3
+// @changelog 修正直播净化中的“福袋口令”文案，与抖音原生设置保持一致；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
