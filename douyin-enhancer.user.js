@@ -6,9 +6,9 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.1
-// @changelog 适配抖音新版播放器界面，优化工具栏布局、换行与点击；每个屏蔽关键字可单独设置名称/简介/标签范围；关键字导入导出升级为JSON并兼容旧TXT；
-// @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
+// @version 5.2
+// @changelog 修复新版直播播放器最高清切换，确认画质生效后关闭自动切换；新增直播净化，可记忆弹幕开关、送礼信息、福袋及屏蔽礼物特效的进入默认值，初始化静默应用，不影响后续手动操作；
+// @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
 // @run-at document-start
@@ -3674,12 +3674,17 @@
   ];
   var QUALITY_PLUGIN_SELECTOR = ".QualitySwitchNewPlugin";
   var QUALITY_TRIGGER_SELECTOR = '[data-e2e="quality"]';
-  var QUALITY_OPTION_SELECTORS = [
-    '[data-e2e="quality-selector"] .J1oLRAwo',
-    '[data-e2e="quality-selector"] .L5MQ4Qvg .yaQJImEq',
-    '[data-e2e="quality-selector"] .L5MQ4Qvg'
+  var PURIFICATION_KEY = "douyin-enhancer-live-defaults";
+  var PURIFICATION_OPTIONS = [
+    { key: "danmaku", label: "\u5F39\u5E55\u5F00\u5173" },
+    { key: "giftDanmaku", label: "\u9001\u793C\u4FE1\u606F", nativeLabel: "\u9001\u793C\u4FE1\u606F" },
+    { key: "lotteryDanmaku", label: "\u798F\u888B", nativeLabel: "\u798F\u888B\u53E3\u4EE4" },
+    { key: "giftEffects", label: "\u5C4F\u853D\u793C\u7269\u7279\u6548", inverted: true }
   ];
-  var QUALITY_TEXT_SELECTORS = [".xMYYJi25", ".IUilDqvc"];
+  var PURIFICATION_GROUPS = [
+    { selector: '[data-e2e="danmaku-setting-icon"]', panelSelector: ".UMXOdhRc", keys: ["giftDanmaku", "lotteryDanmaku", "danmaku"] },
+    { selector: '[data-e2e="gift-setting"]', panelSelector: ".BMrAdi9a", keys: ["giftEffects"] }
+  ];
   var PRIORITY_ORDER = ["\u539F\u753B", "\u84DD\u5149", "\u8D85\u6E05", "\u9AD8\u6E05", "\u6807\u6E05"];
   var LiveEnhancer = class {
     constructor() {
@@ -3687,6 +3692,17 @@
       this.isAutoHighResEnabled = true;
       this.lastTriggerAttemptAt = 0;
       this.autoApplyReadyAt = Date.now() + APPLY_DELAY_MS;
+      this.purificationDefaults = {
+        danmaku: true,
+        giftDanmaku: true,
+        lotteryDanmaku: true,
+        giftEffects: true,
+        ...JSON.parse(localStorage.getItem(PURIFICATION_KEY) || "{}")
+      };
+      this.roomKey = "";
+      this.appliedDefaults = /* @__PURE__ */ new Set();
+      this.purificationMenu = null;
+      this.pendingQuality = null;
       this.init();
     }
     init() {
@@ -3695,12 +3711,24 @@
     }
     mainLoop() {
       if (!this.isSupportedLivePage()) {
+        this.closePurificationMenu();
+        this.roomKey = "";
         return;
+      }
+      const roomKey = window.location.hostname + window.location.pathname;
+      if (roomKey !== this.roomKey) {
+        this.closePurificationMenu();
+        this.roomKey = roomKey;
+        this.appliedDefaults.clear();
+        this.pendingQuality = null;
+        this.isAutoHighResEnabled = true;
+        this.autoApplyReadyAt = Date.now() + APPLY_DELAY_MS;
       }
       this.injectStyles();
       this.insertButton();
       this.syncButtonState();
       this.applyHighestResolution();
+      this.applyPurificationDefaults();
     }
     isSupportedLivePage() {
       return window.location.hostname === "live.douyin.com" || window.location.hostname === "www.douyin.com" && (window.location.pathname.startsWith("/root/live/") || window.location.pathname.startsWith("/follow/live"));
@@ -3712,6 +3740,19 @@
       const style = document.createElement("style");
       style.id = STYLE_ID;
       style.textContent = `
+            [data-dy-live-defaults-loading] > .UMXOdhRc,
+            [data-dy-live-defaults-loading] > .BMrAdi9a { visibility: hidden !important; pointer-events: none !important; }
+            .dy-live-purification { position: relative; z-index: 20; pointer-events: auto; color: rgba(255,255,255,.9); font-size: 13px; cursor: pointer; padding: 8px; white-space: nowrap; }
+            .dy-live-purification-panel { display: none; position: absolute; bottom: 100%; right: 0; width: 260px; box-sizing: border-box; padding: 16px; background: #252632; border-radius: 8px; box-shadow: 0 4px 16px #0006; cursor: default; white-space: normal; text-align: left; line-height: 1.5; }
+            .dy-live-purification:hover .dy-live-purification-panel,
+            .dy-live-purification:focus-within .dy-live-purification-panel { display: block; }
+            .dy-live-purification-panel label { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; cursor: pointer; }
+            .dy-live-purification-panel input { appearance: none; position: relative; flex: 0 0 28px; width: 28px; height: 16px; margin: 0; padding: 0; border: none; border-radius: 999px; background: rgba(255,255,255,.26); cursor: pointer; transition: background .18s ease; }
+            .dy-live-purification-panel input::before { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .18s ease; }
+            .dy-live-purification-panel input:checked { background: #fe2c55; }
+            .dy-live-purification-panel input:checked::before { transform: translateX(12px); }
+            .dy-live-purification-panel input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+            .dy-live-purification-panel p { margin: 10px 0 0; font-size: 12px; line-height: 1.6; color: #aaa; white-space: normal; overflow-wrap: anywhere; }
             .${BUTTON_SLOT_CLASS} {
                 display: flex;
                 align-items: center;
@@ -3786,6 +3827,9 @@
       if (!toolbar) {
         return;
       }
+      if (!toolbar.querySelector(".dy-live-purification")) {
+        toolbar.appendChild(this.createPurificationPanel());
+      }
       let slot = toolbar.querySelector(`.${BUTTON_SLOT_CLASS}`);
       if (!slot) {
         slot = this.createButton();
@@ -3846,6 +3890,7 @@
             </div>
         `;
       const toggle = () => {
+        this.pendingQuality = null;
         this.isAutoHighResEnabled = !this.isAutoHighResEnabled;
         this.lastTriggerAttemptAt = 0;
         this.autoApplyReadyAt = this.isAutoHighResEnabled ? Date.now() + APPLY_DELAY_MS : 0;
@@ -3882,6 +3927,10 @@
       }
       const playerRoot = this.getLivePlayerRoot();
       const currentQuality = this.getCurrentQualityLabel(playerRoot);
+      if (this.pendingQuality && currentQuality === this.pendingQuality) {
+        this.disableAutoHighRes(`\u{1F4FA} \u76F4\u64AD\u5206\u8FA8\u7387\uFF1A\u5DF2\u5207\u6362\u81F3\u6700\u9AD8\u6863 ${currentQuality}`);
+        return;
+      }
       const options = this.getQualityOptions(playerRoot);
       if (options.length === 0) {
         this.tryOpenQualityMenu(playerRoot);
@@ -3893,10 +3942,12 @@
         return;
       }
       bestOption.element.click();
-      this.disableAutoHighRes(`\u{1F4FA} \u76F4\u64AD\u5206\u8FA8\u7387\uFF1A\u5DF2\u5207\u6362\u81F3\u6700\u9AD8\u6863 ${bestOption.label}`);
+      this.pendingQuality = bestOption.label;
+      this.autoApplyReadyAt = Date.now() + MENU_RETRY_INTERVAL_MS;
     }
     disableAutoHighRes(message) {
       this.isAutoHighResEnabled = false;
+      this.pendingQuality = null;
       this.autoApplyReadyAt = 0;
       this.syncButtonState();
       this.notificationManager.showMessage(message);
@@ -3909,18 +3960,16 @@
     getQualityOptions(playerRoot) {
       const root = playerRoot || document;
       const optionMap = /* @__PURE__ */ new Map();
-      QUALITY_OPTION_SELECTORS.forEach((selector) => {
-        root.querySelectorAll(selector).forEach((element) => {
-          const label = this.normalizeQualityLabel(this.extractQualityLabel(element));
-          const priority = PRIORITY_ORDER.indexOf(label);
-          if (priority === -1) {
-            return;
-          }
-          optionMap.set(label, {
-            element,
-            label,
-            priority
-          });
+      root.querySelectorAll('[data-e2e="quality-selector"] > div').forEach((element) => {
+        const label = this.normalizeQualityLabel(element.textContent);
+        const priority = PRIORITY_ORDER.indexOf(label);
+        if (priority === -1) {
+          return;
+        }
+        optionMap.set(label, {
+          element: Array.from(element.querySelectorAll("div")).at(-1),
+          label,
+          priority
         });
       });
       return Array.from(optionMap.values()).sort((a, b) => a.priority - b.priority);
@@ -3944,15 +3993,100 @@
     normalizeQualityLabel(text) {
       return String(text || "").replace(/\s+/g, "").trim();
     }
-    extractQualityLabel(element) {
+    createPurificationPanel() {
+      const container = document.createElement("div");
+      container.className = "dy-live-purification";
+      container.tabIndex = 0;
+      container.innerHTML = `<span>\u76F4\u64AD\u51C0\u5316</span><div class="dy-live-purification-panel"><strong>\u76F4\u64AD\u51C0\u5316</strong>${PURIFICATION_OPTIONS.map((option) => `<label>${option.label}<input type="checkbox" role="switch" data-key="${option.key}" aria-label="${option.label}"></label>`).join("")}<p>\u8FD9\u91CC\u53EA\u5F71\u54CD\u6BCF\u6B21\u8FDB\u5165\u76F4\u64AD\u95F4\u65F6\u7684\u9ED8\u8BA4\u503C\uFF0C\u4E0D\u5F71\u54CD\u540E\u7EED\u6B63\u5E38\u5F00\u5173\u76F8\u5173\u9009\u9879\u3002</p></div>`;
+      PURIFICATION_OPTIONS.forEach((option) => {
+        const input = container.querySelector(`[data-key="${option.key}"]`);
+        input.checked = option.inverted ? !this.purificationDefaults[option.key] : this.purificationDefaults[option.key];
+        input.addEventListener("change", () => {
+          this.purificationDefaults[option.key] = option.inverted ? !input.checked : input.checked;
+          localStorage.setItem(PURIFICATION_KEY, JSON.stringify(this.purificationDefaults));
+        });
+      });
+      ["pointerdown", "mousedown", "mouseup", "click", "keydown"].forEach((eventName) => {
+        container.addEventListener(eventName, (event) => event.stopPropagation());
+      });
+      return container;
+    }
+    applyPurificationDefaults() {
       var _a;
-      for (const selector of QUALITY_TEXT_SELECTORS) {
-        const node = element.querySelector(selector);
-        if ((_a = node == null ? void 0 : node.textContent) == null ? void 0 : _a.trim()) {
-          return node.textContent;
+      const playerRoot = this.getLivePlayerRoot();
+      if (!playerRoot)
+        return;
+      if (this.purificationMenu && !this.purificationMenu.element.isConnected) {
+        this.closePurificationMenu();
+      }
+      if ((_a = this.purificationMenu) == null ? void 0 : _a.closing) {
+        this.closePurificationMenu();
+        return;
+      }
+      const group = PURIFICATION_GROUPS.find((item) => item.keys.some((key) => !this.appliedDefaults.has(key)));
+      if (!group)
+        return;
+      const trigger = playerRoot.querySelector(group.selector);
+      if (!trigger)
+        return;
+      if (!this.purificationMenu) {
+        const element = trigger.parentElement;
+        element.setAttribute("data-dy-live-defaults-loading", "");
+        this.purificationMenu = { element, trigger, panelSelector: group.panelSelector, openedAt: 0, closing: false };
+      }
+      const menu = this.purificationMenu;
+      if (Date.now() - menu.openedAt >= MENU_RETRY_INTERVAL_MS) {
+        menu.openedAt = Date.now();
+        trigger.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body }));
+        menu.element.dispatchEvent(new MouseEvent("mouseenter"));
+      }
+      for (const key of group.keys) {
+        if (this.appliedDefaults.has(key))
+          continue;
+        const option = PURIFICATION_OPTIONS.find((item) => item.key === key);
+        const toggle = this.getPurificationToggle(menu.element, option);
+        if (!toggle)
+          continue;
+        const desired = option.key === "giftEffects" ? !this.purificationDefaults[option.key] : this.purificationDefaults[option.key];
+        if (toggle.classList.contains("SpsbqNUm") !== desired) {
+          toggle.click();
+        }
+        const updatedToggle = this.getPurificationToggle(menu.element, option);
+        if ((updatedToggle == null ? void 0 : updatedToggle.classList.contains("SpsbqNUm")) === desired) {
+          this.appliedDefaults.add(option.key);
         }
       }
-      return element.textContent || "";
+      if (group.keys.every((key) => this.appliedDefaults.has(key))) {
+        this.closePurificationMenu();
+      }
+    }
+    getPurificationToggle(container, option) {
+      if (option.key === "danmaku") {
+        return container.querySelector('[data-e2e="danmaku-switch"] > div');
+      }
+      if (option.key === "giftEffects") {
+        return container.querySelector('[data-e2e="effect-switch"] > div');
+      }
+      const label = Array.from(container.querySelectorAll("span")).find((node) => node.textContent === option.nativeLabel);
+      return label == null ? void 0 : label.parentElement.querySelector(".dNuSIvAp");
+    }
+    closePurificationMenu() {
+      if (!this.purificationMenu)
+        return;
+      const menu = this.purificationMenu;
+      const { element, trigger, panelSelector } = menu;
+      menu.closing = true;
+      const panel = element.querySelector(panelSelector);
+      if (panel) {
+        panel.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+        panel.dispatchEvent(new MouseEvent("mouseleave"));
+      }
+      trigger.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
+      element.dispatchEvent(new MouseEvent("mouseleave"));
+      if (!element.isConnected || !element.querySelector(panelSelector)) {
+        element.removeAttribute("data-dy-live-defaults-loading");
+        this.purificationMenu = null;
+      }
     }
     queryWithinPlayer(playerRoot, selector) {
       return (playerRoot || document).querySelector(selector);
