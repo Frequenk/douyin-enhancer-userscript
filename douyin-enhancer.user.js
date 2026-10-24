@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.3
-// @changelog 修正直播净化中的“福袋口令”文案，与抖音原生设置保持一致；
+// @version 5.4
+// @changelog 适配从短视频信息流进入的直播间，修复直播净化导致弹幕反复开关、默认设置不生效及设置弹窗残留的问题；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -3682,8 +3682,8 @@
     { key: "giftEffects", label: "\u5C4F\u853D\u793C\u7269\u7279\u6548", inverted: true }
   ];
   var PURIFICATION_GROUPS = [
-    { selector: '[data-e2e="danmaku-setting-icon"]', panelSelector: ".UMXOdhRc", keys: ["giftDanmaku", "lotteryDanmaku", "danmaku"] },
-    { selector: '[data-e2e="gift-setting"]', panelSelector: ".BMrAdi9a", keys: ["giftEffects"] }
+    { selector: '[data-e2e="danmaku-setting-icon"]', keys: ["giftDanmaku", "lotteryDanmaku", "danmaku"] },
+    { selector: '[data-e2e="gift-setting"]', keys: ["giftEffects"] }
   ];
   var PRIORITY_ORDER = ["\u539F\u753B", "\u84DD\u5149", "\u8D85\u6E05", "\u9AD8\u6E05", "\u6807\u6E05"];
   var LiveEnhancer = class {
@@ -3740,8 +3740,7 @@
       const style = document.createElement("style");
       style.id = STYLE_ID;
       style.textContent = `
-            [data-dy-live-defaults-loading] > .UMXOdhRc,
-            [data-dy-live-defaults-loading] > .BMrAdi9a { visibility: hidden !important; pointer-events: none !important; }
+            [data-dy-live-defaults-loading] > :not([data-e2e]) { visibility: hidden !important; pointer-events: none !important; }
             .dy-live-purification { position: relative; z-index: 20; pointer-events: auto; color: rgba(255,255,255,.9); font-size: 13px; cursor: pointer; padding: 8px; white-space: nowrap; }
             .dy-live-purification-panel { display: none; position: absolute; bottom: 100%; right: 0; width: 260px; box-sizing: border-box; padding: 16px; background: #252632; border-radius: 8px; box-shadow: 0 4px 16px #0006; cursor: default; white-space: normal; text-align: left; line-height: 1.5; }
             .dy-live-purification:hover .dy-live-purification-panel,
@@ -4032,10 +4031,10 @@
       if (!this.purificationMenu) {
         const element = trigger.parentElement;
         element.setAttribute("data-dy-live-defaults-loading", "");
-        this.purificationMenu = { element, trigger, panelSelector: group.panelSelector, openedAt: 0, closing: false };
+        this.purificationMenu = { element, trigger, openedAt: 0, closing: false };
       }
       const menu = this.purificationMenu;
-      if (Date.now() - menu.openedAt >= MENU_RETRY_INTERVAL_MS) {
+      if (!trigger.nextElementSibling && Date.now() - menu.openedAt >= MENU_RETRY_INTERVAL_MS) {
         menu.openedAt = Date.now();
         trigger.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body }));
         menu.element.dispatchEvent(new MouseEvent("mouseenter"));
@@ -4048,11 +4047,11 @@
         if (!toggle)
           continue;
         const desired = option.key === "giftEffects" ? !this.purificationDefaults[option.key] : this.purificationDefaults[option.key];
-        if (toggle.classList.contains("SpsbqNUm") !== desired) {
+        if (this.isPurificationToggleEnabled(toggle) !== desired) {
           toggle.click();
         }
         const updatedToggle = this.getPurificationToggle(menu.element, option);
-        if ((updatedToggle == null ? void 0 : updatedToggle.classList.contains("SpsbqNUm")) === desired) {
+        if (updatedToggle && this.isPurificationToggleEnabled(updatedToggle) === desired) {
           this.appliedDefaults.add(option.key);
         }
       }
@@ -4068,22 +4067,26 @@
         return container.querySelector('[data-e2e="effect-switch"] > div');
       }
       const label = Array.from(container.querySelectorAll("span")).find((node) => node.textContent === option.nativeLabel);
-      return label == null ? void 0 : label.parentElement.querySelector(".dNuSIvAp");
+      return label == null ? void 0 : label.nextElementSibling.firstElementChild;
+    }
+    isPurificationToggleEnabled(toggle) {
+      const knobStyle = getComputedStyle(toggle.firstElementChild);
+      return new DOMMatrixReadOnly(knobStyle.transform).m41 > 0;
     }
     closePurificationMenu() {
       if (!this.purificationMenu)
         return;
       const menu = this.purificationMenu;
-      const { element, trigger, panelSelector } = menu;
+      const { element, trigger } = menu;
       menu.closing = true;
-      const panel = element.querySelector(panelSelector);
+      const panel = trigger.nextElementSibling;
       if (panel) {
         panel.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
         panel.dispatchEvent(new MouseEvent("mouseleave"));
       }
       trigger.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
       element.dispatchEvent(new MouseEvent("mouseleave"));
-      if (!element.isConnected || !element.querySelector(panelSelector)) {
+      if (!element.isConnected || !trigger.nextElementSibling) {
         element.removeAttribute("data-dy-live-defaults-loading");
         this.purificationMenu = null;
       }

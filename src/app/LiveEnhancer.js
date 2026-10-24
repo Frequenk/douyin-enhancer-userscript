@@ -29,8 +29,8 @@ const PURIFICATION_OPTIONS = [
     { key: 'giftEffects', label: '屏蔽礼物特效', inverted: true }
 ];
 const PURIFICATION_GROUPS = [
-    { selector: '[data-e2e="danmaku-setting-icon"]', panelSelector: '.UMXOdhRc', keys: ['giftDanmaku', 'lotteryDanmaku', 'danmaku'] },
-    { selector: '[data-e2e="gift-setting"]', panelSelector: '.BMrAdi9a', keys: ['giftEffects'] }
+    { selector: '[data-e2e="danmaku-setting-icon"]', keys: ['giftDanmaku', 'lotteryDanmaku', 'danmaku'] },
+    { selector: '[data-e2e="gift-setting"]', keys: ['giftEffects'] }
 ];
 const PRIORITY_ORDER = ['原画', '蓝光', '超清', '高清', '标清'];
 
@@ -99,8 +99,7 @@ export class LiveEnhancer {
         const style = document.createElement('style');
         style.id = STYLE_ID;
         style.textContent = `
-            [data-dy-live-defaults-loading] > .UMXOdhRc,
-            [data-dy-live-defaults-loading] > .BMrAdi9a { visibility: hidden !important; pointer-events: none !important; }
+            [data-dy-live-defaults-loading] > :not([data-e2e]) { visibility: hidden !important; pointer-events: none !important; }
             .dy-live-purification { position: relative; z-index: 20; pointer-events: auto; color: rgba(255,255,255,.9); font-size: 13px; cursor: pointer; padding: 8px; white-space: nowrap; }
             .dy-live-purification-panel { display: none; position: absolute; bottom: 100%; right: 0; width: 260px; box-sizing: border-box; padding: 16px; background: #252632; border-radius: 8px; box-shadow: 0 4px 16px #0006; cursor: default; white-space: normal; text-align: left; line-height: 1.5; }
             .dy-live-purification:hover .dy-live-purification-panel,
@@ -420,10 +419,10 @@ export class LiveEnhancer {
         if (!this.purificationMenu) {
             const element = trigger.parentElement;
             element.setAttribute('data-dy-live-defaults-loading', '');
-            this.purificationMenu = { element, trigger, panelSelector: group.panelSelector, openedAt: 0, closing: false };
+            this.purificationMenu = { element, trigger, openedAt: 0, closing: false };
         }
         const menu = this.purificationMenu;
-        if (Date.now() - menu.openedAt >= MENU_RETRY_INTERVAL_MS) {
+        if (!trigger.nextElementSibling && Date.now() - menu.openedAt >= MENU_RETRY_INTERVAL_MS) {
             menu.openedAt = Date.now();
             trigger.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
             menu.element.dispatchEvent(new MouseEvent('mouseenter'));
@@ -434,11 +433,11 @@ export class LiveEnhancer {
             const toggle = this.getPurificationToggle(menu.element, option);
             if (!toggle) continue;
             const desired = option.key === 'giftEffects' ? !this.purificationDefaults[option.key] : this.purificationDefaults[option.key];
-            if (toggle.classList.contains('SpsbqNUm') !== desired) {
+            if (this.isPurificationToggleEnabled(toggle) !== desired) {
                 toggle.click();
             }
             const updatedToggle = this.getPurificationToggle(menu.element, option);
-            if (updatedToggle?.classList.contains('SpsbqNUm') === desired) {
+            if (updatedToggle && this.isPurificationToggleEnabled(updatedToggle) === desired) {
                 this.appliedDefaults.add(option.key);
             }
         }
@@ -455,22 +454,27 @@ export class LiveEnhancer {
             return container.querySelector('[data-e2e="effect-switch"] > div');
         }
         const label = Array.from(container.querySelectorAll('span')).find(node => node.textContent === option.nativeLabel);
-        return label?.parentElement.querySelector('.dNuSIvAp');
+        return label?.nextElementSibling.firstElementChild;
+    }
+
+    isPurificationToggleEnabled(toggle) {
+        const knobStyle = getComputedStyle(toggle.firstElementChild);
+        return new DOMMatrixReadOnly(knobStyle.transform).m41 > 0;
     }
 
     closePurificationMenu() {
         if (!this.purificationMenu) return;
         const menu = this.purificationMenu;
-        const { element, trigger, panelSelector } = menu;
+        const { element, trigger } = menu;
         menu.closing = true;
-        const panel = element.querySelector(panelSelector);
+        const panel = trigger.nextElementSibling;
         if (panel) {
             panel.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
             panel.dispatchEvent(new MouseEvent('mouseleave'));
         }
         trigger.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
         element.dispatchEvent(new MouseEvent('mouseleave'));
-        if (!element.isConnected || !element.querySelector(panelSelector)) {
+        if (!element.isConnected || !trigger.nextElementSibling) {
             element.removeAttribute('data-dy-live-defaults-loading');
             this.purificationMenu = null;
         }

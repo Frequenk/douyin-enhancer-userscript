@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.3
-// @changelog 修正直播净化中的“福袋口令”文案，与抖音原生设置保持一致；
+// @version 5.4
+// @changelog 适配从短视频信息流进入的直播间，修复直播净化导致弹幕反复开关、默认设置不生效及设置弹窗残留的问题；
 // @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
