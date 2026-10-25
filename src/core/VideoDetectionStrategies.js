@@ -1,6 +1,13 @@
 import { SELECTORS } from './selectors.js';
 import { UIManager } from '../ui/UIManager.js';
 
+const OFFICIAL_CONTENT_RULES = [
+    { key: 'blockPersonalOpinion', text: '个人观点，仅供参考', reason: '个人观点内容' },
+    { key: 'blockFictional', text: '作者声明：虚构演绎，仅供娱乐', reason: '虚构演绎内容' },
+    { key: 'blockAIGenerated', text: '疑似使用了AI生成技术，请谨慎甄别', reason: '疑似 AI 生成内容' },
+    { key: 'blockAIDeclared', text: '作者声明：内容由AI生成', reason: '作者声明的 AI 生成内容' }
+];
+
 export class VideoDetectionStrategies {
         constructor(config, videoController, notificationManager, statsTracker = null) {
             this.config = config;
@@ -8,10 +15,32 @@ export class VideoDetectionStrategies {
             this.notificationManager = notificationManager;
             this.statsTracker = statsTracker;
             this.resolutionSkipped = false;
+            this.officialContentHandled = false;
         }
 
         reset() {
             this.resolutionSkipped = false;
+            this.officialContentHandled = false;
+        }
+
+        checkOfficialContent(container) {
+            if (this.officialContentHandled) return true;
+            if (!this.config.isEnabled('blockKeywords')) return false;
+            const blockConfig = this.config.get('blockKeywords');
+            if (!OFFICIAL_CONTENT_RULES.some(rule => blockConfig[rule.key])) return false;
+
+            const labels = Array.from(container.querySelectorAll(SELECTORS.officialContentIndicator))
+                .map(element => element.textContent.replace(/\s+/g, ''));
+            const matchedRule = OFFICIAL_CONTENT_RULES.find(rule => blockConfig[rule.key] && labels.includes(rule.text));
+            if (!matchedRule) return false;
+
+            this.officialContentHandled = true;
+            if (blockConfig.pressR) {
+                this.videoController.pressR(`内容屏蔽（${matchedRule.reason}）`);
+            } else {
+                this.videoController.skip(`🚫 内容屏蔽：${matchedRule.reason}`);
+            }
+            return true;
         }
 
         checkAd(container) {

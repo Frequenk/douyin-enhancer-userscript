@@ -6,10 +6,12 @@ export class AIDetector {
             this.config = config;
             this.API_URL = 'http://localhost:11434/api/generate';
             this.checkSchedule = [0, 1000, 2500, 4000, 6000, 8000];
+            this.requestEpoch = 0;
             this.reset();
         }
 
         reset() {
+            this.cancel();
             this.currentCheckIndex = 0;
             this.checkResults = [];
             this.consecutiveYes = 0;
@@ -18,6 +20,18 @@ export class AIDetector {
             this.stopChecking = false;
             this.hasLiked = false;
             this.isProcessing = false;
+        }
+
+        cancel() {
+            this.requestEpoch++;
+            this.stopChecking = true;
+        }
+
+        isCurrentRequest(epoch, videoKey) {
+            return epoch === this.requestEpoch
+                && !this.stopChecking
+                && this.config.isEnabled('aiPreference')
+                && videoKey === this.videoController.getCurrentVideoKey();
         }
 
         shouldCheck(videoPlayTime) {
@@ -31,17 +45,22 @@ export class AIDetector {
         async processVideo(videoEl, container = null) {
             if (this.isProcessing || this.stopChecking || this.hasSkipped) return;
             this.isProcessing = true;
+            const epoch = this.requestEpoch;
+            const videoKey = this.videoController.getCurrentVideoKey();
 
             try {
                 const base64Image = await this.captureFrame(videoEl, container);
+                if (!this.isCurrentRequest(epoch, videoKey)) return;
                 if (!base64Image) {
                     console.log('【AI检测】截图为空，等待下一轮重试');
                     return;
                 }
                 const aiResponse = await this.callAI(base64Image);
+                if (!this.isCurrentRequest(epoch, videoKey)) return;
                 this.handleResponse(aiResponse);
                 this.currentCheckIndex++;
             } catch (error) {
+                if (!this.isCurrentRequest(epoch, videoKey)) return;
                 console.error('AI判断功能出错:', error);
                 // 显示错误提示，根据服务商类型显示不同内容
                 const provider = this.config.get('aiPreference').provider;
@@ -51,7 +70,9 @@ export class AIDetector {
                 UIManager.updateToggleButtons('ai-preference-button', false);
                 this.stopChecking = true;
             } finally {
-                this.isProcessing = false;
+                if (epoch === this.requestEpoch) {
+                    this.isProcessing = false;
+                }
             }
         }
 

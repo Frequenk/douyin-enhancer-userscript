@@ -650,6 +650,13 @@ export class DouyinEnhancer {
                 return;
             }
 
+            if (this.strategies.checkOfficialContent(activeContainer)) {
+                if (!this.aiDetector.stopChecking) {
+                    this.aiDetector.cancel();
+                }
+                return;
+            }
+
             if (this.handleSpeedMode(videoEl)) {
                 return;
             }

@@ -6,9 +6,9 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.4
-// @changelog 适配从短视频信息流进入的直播间，修复直播净化导致弹幕反复开关、默认设置不生效及设置弹窗残留的问题；
-// @description 自动跳过直播、智能屏蔽关键字（自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
+// @version 5.5
+// @changelog “账号屏蔽”更名为“内容屏蔽”；新增个人观点、虚构演绎、作者声明 AI 生成及平台疑似 AI 提示四项独立屏蔽，默认关闭并沿用按 R 设置；防止 AI 喜好异步结果跨视频生效；
+// @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
 // @run-at document-start
@@ -107,7 +107,11 @@
           pressR: this.loadPressRSetting(),
           blockName: this.loadBlockNameSetting(),
           blockDesc: this.loadBlockDescSetting(),
-          blockTags: this.loadBlockTagsSetting()
+          blockTags: this.loadBlockTagsSetting(),
+          blockAIGenerated: this.loadBlockAIGeneratedSetting(),
+          blockAIDeclared: this.loadBlockAIDeclaredSetting(),
+          blockPersonalOpinion: this.loadBlockPersonalOpinionSetting(),
+          blockFictional: this.loadBlockFictionalSetting()
         },
         skipAd: { enabled: this.getDefaultEnabledState("skipAd"), key: "skipAd" },
         onlyResolution: {
@@ -378,6 +382,34 @@
       this.config.blockKeywords.blockTags = enabled;
       localStorage.setItem("douyin_block_tags_enabled", enabled.toString());
     }
+    loadBlockAIGeneratedSetting() {
+      return localStorage.getItem("douyin_block_ai_generated_enabled") === "true";
+    }
+    saveBlockAIGeneratedSetting(enabled) {
+      this.config.blockKeywords.blockAIGenerated = enabled;
+      localStorage.setItem("douyin_block_ai_generated_enabled", enabled.toString());
+    }
+    loadBlockAIDeclaredSetting() {
+      return localStorage.getItem("douyin_block_ai_declared_enabled") === "true";
+    }
+    saveBlockAIDeclaredSetting(enabled) {
+      this.config.blockKeywords.blockAIDeclared = enabled;
+      localStorage.setItem("douyin_block_ai_declared_enabled", enabled.toString());
+    }
+    loadBlockPersonalOpinionSetting() {
+      return localStorage.getItem("douyin_block_personal_opinion_enabled") === "true";
+    }
+    saveBlockPersonalOpinionSetting(enabled) {
+      this.config.blockKeywords.blockPersonalOpinion = enabled;
+      localStorage.setItem("douyin_block_personal_opinion_enabled", enabled.toString());
+    }
+    loadBlockFictionalSetting() {
+      return localStorage.getItem("douyin_block_fictional_enabled") === "true";
+    }
+    saveBlockFictionalSetting(enabled) {
+      this.config.blockKeywords.blockFictional = enabled;
+      localStorage.setItem("douyin_block_fictional_enabled", enabled.toString());
+    }
     saveDefaultEnabledState(key, enabled) {
       if (!this.isToggleButtonStateKey(key)) {
         return;
@@ -433,7 +465,8 @@
     ].join(", "),
     adIndicator: 'svg[viewBox="0 0 30 16"]',
     videoElement: "video",
-    videoDesc: '[data-e2e="video-desc"]'
+    videoDesc: '[data-e2e="video-desc"]',
+    officialContentIndicator: ".safetyBar"
   };
 
   // src/utils/dom.js
@@ -520,8 +553,8 @@
       }
       this.sendKeyEvent("z", "KeyZ", 90);
     }
-    pressR() {
-      this.notificationManager.showMessage("\u5C4F\u853D\u8D26\u53F7: \u{1F6AB} \u4E0D\u611F\u5174\u8DA3");
+    pressR(reason = "\u5185\u5BB9\u5C4F\u853D") {
+      this.notificationManager.showMessage(`${reason}: \u{1F6AB} \u4E0D\u611F\u5174\u8DA3`);
       this.sendKeyEvent("r", "KeyR", 82);
     }
     toggleCleanScreen() {
@@ -1195,7 +1228,7 @@
           defaultStateType: "toggle"
         },
         {
-          text: "\u8D26\u53F7\u5C4F\u853D",
+          text: "\u5185\u5BB9\u5C4F\u853D",
           className: "block-account-keyword-button",
           configKey: "blockKeywords",
           defaultStateKey: "blockKeywords",
@@ -2370,9 +2403,13 @@
       const blockNameEnabled = this.config.get("blockKeywords").blockName;
       const blockDescEnabled = this.config.get("blockKeywords").blockDesc;
       const blockTagsEnabled = this.config.get("blockKeywords").blockTags;
+      const blockAIGeneratedEnabled = this.config.get("blockKeywords").blockAIGenerated;
+      const blockAIDeclaredEnabled = this.config.get("blockKeywords").blockAIDeclared;
+      const blockPersonalOpinionEnabled = this.config.get("blockKeywords").blockPersonalOpinion;
+      const blockFictionalEnabled = this.config.get("blockKeywords").blockFictional;
       const content = `
                 <div style="color: rgba(255, 255, 255, 0.7); margin-bottom: 15px; font-size: 12px;">
-                    \u5305\u542B\u8FD9\u4E9B\u5173\u952E\u5B57\u7684\u5185\u5BB9\u5C06\u88AB\u81EA\u52A8\u8DF3\u8FC7
+                    \u547D\u4E2D\u5173\u952E\u5B57\u6216\u5DF2\u542F\u7528\u7684\u5B98\u65B9\u6807\u8BC6\u89C4\u5219\u65F6\uFF0C\u6309\u4E0B\u65B9\u8BBE\u7F6E\u6807\u8BB0\u201C\u4E0D\u611F\u5174\u8DA3\u201D\u6216\u8DF3\u8FC7
                 </div>
 
                 <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
@@ -2388,7 +2425,35 @@
                 </div>
 
                 <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
-                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">\u68C0\u6D4B\u8303\u56F4\uFF1A</div>
+                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">\u4F5C\u8005\u58F0\u660E\uFF1A</div>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
+                        <input type="checkbox" class="block-personal-opinion-checkbox" ${blockPersonalOpinionEnabled ? "checked" : ""}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        \u4E2A\u4EBA\u89C2\u70B9\uFF0C\u4EC5\u4F9B\u53C2\u8003
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
+                        <input type="checkbox" class="block-fictional-checkbox" ${blockFictionalEnabled ? "checked" : ""}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        \u865A\u6784\u6F14\u7ECE\uFF0C\u4EC5\u4F9B\u5A31\u4E50
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                        <input type="checkbox" class="block-ai-declared-checkbox" ${blockAIDeclaredEnabled ? "checked" : ""}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        \u5185\u5BB9\u7531 AI \u751F\u6210
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
+                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">\u5E73\u53F0\u63D0\u793A\uFF1A</div>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                        <input type="checkbox" class="block-ai-generated-checkbox" ${blockAIGeneratedEnabled ? "checked" : ""}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        \u7591\u4F3C\u4F7F\u7528\u4E86 AI \u751F\u6210\u6280\u672F\uFF0C\u8BF7\u8C28\u614E\u7504\u522B
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
+                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">\u5173\u952E\u5B57\u68C0\u6D4B\u8303\u56F4\uFF1A</div>
                     <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
                         <input type="checkbox" class="block-name-checkbox" ${blockNameEnabled ? "checked" : ""}
                                style="margin-right: 8px; transform: scale(1.2);">
@@ -2426,19 +2491,30 @@
                 </div>
                 <div class="keyword-list" style="margin-bottom: 15px; max-height: 200px; overflow-y: auto;"></div>
             `;
-      const dialog = UIFactory.createDialog("keyword-setting-dialog", "\u7BA1\u7406\u5C4F\u853D\u5173\u952E\u5B57", content, () => {
+      const dialog = UIFactory.createDialog("keyword-setting-dialog", "\u5185\u5BB9\u5C4F\u853D\u8BBE\u7F6E", content, () => {
         const pressRCheckbox = dialog.querySelector(".press-r-checkbox");
         const blockNameCheckbox = dialog.querySelector(".block-name-checkbox");
         const blockDescCheckbox = dialog.querySelector(".block-desc-checkbox");
         const blockTagsCheckbox = dialog.querySelector(".block-tags-checkbox");
+        const blockAIGeneratedCheckbox = dialog.querySelector(".block-ai-generated-checkbox");
+        const blockAIDeclaredCheckbox = dialog.querySelector(".block-ai-declared-checkbox");
+        const blockPersonalOpinionCheckbox = dialog.querySelector(".block-personal-opinion-checkbox");
+        const blockFictionalCheckbox = dialog.querySelector(".block-fictional-checkbox");
         this.config.saveKeywords(tempKeywords, tempKeywordScopes);
         this.config.savePressRSetting(pressRCheckbox.checked);
         this.config.saveBlockNameSetting(blockNameCheckbox.checked);
         this.config.saveBlockDescSetting(blockDescCheckbox.checked);
         this.config.saveBlockTagsSetting(blockTagsCheckbox.checked);
-        this.notificationManager.showMessage("\u{1F6AB} \u5C4F\u853D\u5173\u952E\u5B57: \u8BBE\u7F6E\u5DF2\u66F4\u65B0");
+        this.config.saveBlockAIGeneratedSetting(blockAIGeneratedCheckbox.checked);
+        this.config.saveBlockAIDeclaredSetting(blockAIDeclaredCheckbox.checked);
+        this.config.saveBlockPersonalOpinionSetting(blockPersonalOpinionCheckbox.checked);
+        this.config.saveBlockFictionalSetting(blockFictionalCheckbox.checked);
+        this.notificationManager.showMessage("\u{1F6AB} \u5185\u5BB9\u5C4F\u853D: \u8BBE\u7F6E\u5DF2\u66F4\u65B0");
         return true;
       });
+      dialog.style.maxHeight = "85vh";
+      dialog.style.overflowY = "auto";
+      dialog.style.boxSizing = "border-box";
       const addKeyword = () => {
         const input = dialog.querySelector(".keyword-input");
         const keyword = input.value.trim();
@@ -2474,6 +2550,18 @@
       dialog.querySelector(".block-tags-checkbox").addEventListener("click", (e) => {
         e.stopPropagation();
       });
+      dialog.querySelector(".block-ai-generated-checkbox").addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+      dialog.querySelector(".block-ai-declared-checkbox").addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+      dialog.querySelector(".block-personal-opinion-checkbox").addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+      dialog.querySelector(".block-fictional-checkbox").addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
       const exportKeywords = () => {
         const content2 = JSON.stringify({
           type: "douyin-enhancer-keywords",
@@ -2492,7 +2580,7 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        this.notificationManager.showMessage("\u{1F4BE} \u5C4F\u853D\u8D26\u53F7: \u5173\u952E\u5B57\u5DF2\u5BFC\u51FA");
+        this.notificationManager.showMessage("\u{1F4BE} \u5185\u5BB9\u5C4F\u853D: \u5173\u952E\u5B57\u5DF2\u5BFC\u51FA");
       };
       dialog.querySelector(".export-keywords").addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2511,7 +2599,7 @@
               const entries = parseImportedContent(content2, file.name);
               if (entries && mergeImportedEntries(entries)) {
                 updateList();
-                this.notificationManager.showMessage("\u{1F4C1} \u5C4F\u853D\u8D26\u53F7: \u5173\u952E\u5B57\u5BFC\u5165\u6210\u529F");
+                this.notificationManager.showMessage("\u{1F4C1} \u5185\u5BB9\u5C4F\u853D: \u5173\u952E\u5B57\u5BFC\u5165\u6210\u529F");
               } else {
                 alert("\u6587\u4EF6\u5185\u5BB9\u4E3A\u7A7A\u6216\u683C\u5F0F\u4E0D\u6B63\u786E\uFF01");
               }
@@ -2574,9 +2662,11 @@
       this.config = config;
       this.API_URL = "http://localhost:11434/api/generate";
       this.checkSchedule = [0, 1e3, 2500, 4e3, 6e3, 8e3];
+      this.requestEpoch = 0;
       this.reset();
     }
     reset() {
+      this.cancel();
       this.currentCheckIndex = 0;
       this.checkResults = [];
       this.consecutiveYes = 0;
@@ -2586,6 +2676,13 @@
       this.hasLiked = false;
       this.isProcessing = false;
     }
+    cancel() {
+      this.requestEpoch++;
+      this.stopChecking = true;
+    }
+    isCurrentRequest(epoch, videoKey) {
+      return epoch === this.requestEpoch && !this.stopChecking && this.config.isEnabled("aiPreference") && videoKey === this.videoController.getCurrentVideoKey();
+    }
     shouldCheck(videoPlayTime) {
       return !this.isProcessing && !this.stopChecking && !this.hasSkipped && this.currentCheckIndex < this.checkSchedule.length && videoPlayTime >= this.checkSchedule[this.currentCheckIndex];
     }
@@ -2593,16 +2690,24 @@
       if (this.isProcessing || this.stopChecking || this.hasSkipped)
         return;
       this.isProcessing = true;
+      const epoch = this.requestEpoch;
+      const videoKey = this.videoController.getCurrentVideoKey();
       try {
         const base64Image = await this.captureFrame(videoEl, container);
+        if (!this.isCurrentRequest(epoch, videoKey))
+          return;
         if (!base64Image) {
           console.log("\u3010AI\u68C0\u6D4B\u3011\u622A\u56FE\u4E3A\u7A7A\uFF0C\u7B49\u5F85\u4E0B\u4E00\u8F6E\u91CD\u8BD5");
           return;
         }
         const aiResponse = await this.callAI(base64Image);
+        if (!this.isCurrentRequest(epoch, videoKey))
+          return;
         this.handleResponse(aiResponse);
         this.currentCheckIndex++;
       } catch (error) {
+        if (!this.isCurrentRequest(epoch, videoKey))
+          return;
         console.error("AI\u5224\u65AD\u529F\u80FD\u51FA\u9519:", error);
         const provider = this.config.get("aiPreference").provider;
         UIFactory.showErrorDialog(provider, this.extractErrorDetails(provider, error));
@@ -2610,7 +2715,9 @@
         UIManager.updateToggleButtons("ai-preference-button", false);
         this.stopChecking = true;
       } finally {
-        this.isProcessing = false;
+        if (epoch === this.requestEpoch) {
+          this.isProcessing = false;
+        }
       }
     }
     async captureFrame(videoEl, container = null) {
@@ -2804,6 +2911,12 @@
   };
 
   // src/core/VideoDetectionStrategies.js
+  var OFFICIAL_CONTENT_RULES = [
+    { key: "blockPersonalOpinion", text: "\u4E2A\u4EBA\u89C2\u70B9\uFF0C\u4EC5\u4F9B\u53C2\u8003", reason: "\u4E2A\u4EBA\u89C2\u70B9\u5185\u5BB9" },
+    { key: "blockFictional", text: "\u4F5C\u8005\u58F0\u660E\uFF1A\u865A\u6784\u6F14\u7ECE\uFF0C\u4EC5\u4F9B\u5A31\u4E50", reason: "\u865A\u6784\u6F14\u7ECE\u5185\u5BB9" },
+    { key: "blockAIGenerated", text: "\u7591\u4F3C\u4F7F\u7528\u4E86AI\u751F\u6210\u6280\u672F\uFF0C\u8BF7\u8C28\u614E\u7504\u522B", reason: "\u7591\u4F3C AI \u751F\u6210\u5185\u5BB9" },
+    { key: "blockAIDeclared", text: "\u4F5C\u8005\u58F0\u660E\uFF1A\u5185\u5BB9\u7531AI\u751F\u6210", reason: "\u4F5C\u8005\u58F0\u660E\u7684 AI \u751F\u6210\u5185\u5BB9" }
+  ];
   var VideoDetectionStrategies = class {
     constructor(config, videoController, notificationManager, statsTracker = null) {
       this.config = config;
@@ -2811,9 +2924,31 @@
       this.notificationManager = notificationManager;
       this.statsTracker = statsTracker;
       this.resolutionSkipped = false;
+      this.officialContentHandled = false;
     }
     reset() {
       this.resolutionSkipped = false;
+      this.officialContentHandled = false;
+    }
+    checkOfficialContent(container) {
+      if (this.officialContentHandled)
+        return true;
+      if (!this.config.isEnabled("blockKeywords"))
+        return false;
+      const blockConfig = this.config.get("blockKeywords");
+      if (!OFFICIAL_CONTENT_RULES.some((rule) => blockConfig[rule.key]))
+        return false;
+      const labels = Array.from(container.querySelectorAll(SELECTORS.officialContentIndicator)).map((element) => element.textContent.replace(/\s+/g, ""));
+      const matchedRule = OFFICIAL_CONTENT_RULES.find((rule) => blockConfig[rule.key] && labels.includes(rule.text));
+      if (!matchedRule)
+        return false;
+      this.officialContentHandled = true;
+      if (blockConfig.pressR) {
+        this.videoController.pressR(`\u5185\u5BB9\u5C4F\u853D\uFF08${matchedRule.reason}\uFF09`);
+      } else {
+        this.videoController.skip(`\u{1F6AB} \u5185\u5BB9\u5C4F\u853D\uFF1A${matchedRule.reason}`);
+      }
+      return true;
     }
     checkAd(container) {
       if (!this.config.isEnabled("skipAd"))
@@ -3547,6 +3682,12 @@
         return;
       this.trackWatchTime(videoEl);
       if (this.handleNewVideo(currentVideoUrl)) {
+        return;
+      }
+      if (this.strategies.checkOfficialContent(activeContainer)) {
+        if (!this.aiDetector.stopChecking) {
+          this.aiDetector.cancel();
+        }
         return;
       }
       if (this.handleSpeedMode(videoEl)) {

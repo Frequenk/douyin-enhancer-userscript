@@ -4,7 +4,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Frequenk/douyin-enhancer-userscript?style=flat&logo=github&label=Stars&color=white)](https://github.com/Frequenk/douyin-enhancer-userscript/stargazers)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-一个面向网页版抖音（含新版播放器界面）的用户脚本：自动跳过直播和广告、按账号名/文案/话题标签屏蔽内容、自动切最高画质（短视频与直播）、分辨率筛选、AI 智能筛选与自动点赞、极速模式、每日统计，以及工具栏按钮显示和默认开关管理。支持自动清屏默认值设置，并通过“直播净化”为直播推荐页和信息流进入的直播间记忆弹幕及礼物相关设置。
+一个面向网页版抖音（含新版播放器界面）的用户脚本：自动跳过直播和广告、内容屏蔽（账号名、文案、话题标签、作者声明和平台提示）、自动切最高画质（短视频与直播）、分辨率筛选、AI 智能筛选与自动点赞、极速模式、每日统计，以及工具栏按钮显示和默认开关管理。支持自动清屏默认值设置，并通过“直播净化”为直播推荐页和信息流进入的直播间记忆弹幕及礼物相关设置。
 
 ## 📸 效果预览
 

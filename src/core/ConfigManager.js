@@ -29,7 +29,11 @@ export class ConfigManager {
                     pressR: this.loadPressRSetting(),
                     blockName: this.loadBlockNameSetting(),
                     blockDesc: this.loadBlockDescSetting(),
-                    blockTags: this.loadBlockTagsSetting()
+                    blockTags: this.loadBlockTagsSetting(),
+                    blockAIGenerated: this.loadBlockAIGeneratedSetting(),
+                    blockAIDeclared: this.loadBlockAIDeclaredSetting(),
+                    blockPersonalOpinion: this.loadBlockPersonalOpinionSetting(),
+                    blockFictional: this.loadBlockFictionalSetting()
                 },
                 skipAd: { enabled: this.getDefaultEnabledState('skipAd'), key: 'skipAd' },
                 onlyResolution: {
@@ -360,6 +364,42 @@ export class ConfigManager {
         saveBlockTagsSetting(enabled) {
             this.config.blockKeywords.blockTags = enabled;
             localStorage.setItem('douyin_block_tags_enabled', enabled.toString());
+        }
+
+        loadBlockAIGeneratedSetting() {
+            return localStorage.getItem('douyin_block_ai_generated_enabled') === 'true';
+        }
+
+        saveBlockAIGeneratedSetting(enabled) {
+            this.config.blockKeywords.blockAIGenerated = enabled;
+            localStorage.setItem('douyin_block_ai_generated_enabled', enabled.toString());
+        }
+
+        loadBlockAIDeclaredSetting() {
+            return localStorage.getItem('douyin_block_ai_declared_enabled') === 'true';
+        }
+
+        saveBlockAIDeclaredSetting(enabled) {
+            this.config.blockKeywords.blockAIDeclared = enabled;
+            localStorage.setItem('douyin_block_ai_declared_enabled', enabled.toString());
+        }
+
+        loadBlockPersonalOpinionSetting() {
+            return localStorage.getItem('douyin_block_personal_opinion_enabled') === 'true';
+        }
+
+        saveBlockPersonalOpinionSetting(enabled) {
+            this.config.blockKeywords.blockPersonalOpinion = enabled;
+            localStorage.setItem('douyin_block_personal_opinion_enabled', enabled.toString());
+        }
+
+        loadBlockFictionalSetting() {
+            return localStorage.getItem('douyin_block_fictional_enabled') === 'true';
+        }
+
+        saveBlockFictionalSetting(enabled) {
+            this.config.blockKeywords.blockFictional = enabled;
+            localStorage.setItem('douyin_block_fictional_enabled', enabled.toString());
         }
 
         saveDefaultEnabledState(key, enabled) {

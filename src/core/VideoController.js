@@ -32,8 +32,8 @@ export class VideoController {
             this.sendKeyEvent('z', 'KeyZ', 90);
         }
 
-        pressR() {
-            this.notificationManager.showMessage('屏蔽账号: 🚫 不感兴趣');
+        pressR(reason = '内容屏蔽') {
+            this.notificationManager.showMessage(`${reason}: 🚫 不感兴趣`);
             this.sendKeyEvent('r', 'KeyR', 82);
         }
 

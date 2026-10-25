@@ -467,7 +467,7 @@ export class UIFactory {
                     defaultStateType: 'toggle'
                 },
                 {
-                    text: '账号屏蔽',
+                    text: '内容屏蔽',
                     className: 'block-account-keyword-button',
                     configKey: 'blockKeywords',
                     defaultStateKey: 'blockKeywords',
@@ -1765,10 +1765,14 @@ export class UIFactory {
             const blockNameEnabled = this.config.get('blockKeywords').blockName;
             const blockDescEnabled = this.config.get('blockKeywords').blockDesc;
             const blockTagsEnabled = this.config.get('blockKeywords').blockTags;
+            const blockAIGeneratedEnabled = this.config.get('blockKeywords').blockAIGenerated;
+            const blockAIDeclaredEnabled = this.config.get('blockKeywords').blockAIDeclared;
+            const blockPersonalOpinionEnabled = this.config.get('blockKeywords').blockPersonalOpinion;
+            const blockFictionalEnabled = this.config.get('blockKeywords').blockFictional;
 
             const content = `
                 <div style="color: rgba(255, 255, 255, 0.7); margin-bottom: 15px; font-size: 12px;">
-                    包含这些关键字的内容将被自动跳过
+                    命中关键字或已启用的官方标识规则时，按下方设置标记“不感兴趣”或跳过
                 </div>
 
                 <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
@@ -1784,7 +1788,35 @@ export class UIFactory {
                 </div>
 
                 <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
-                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">检测范围：</div>
+                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">作者声明：</div>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
+                        <input type="checkbox" class="block-personal-opinion-checkbox" ${blockPersonalOpinionEnabled ? 'checked' : ''}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        个人观点，仅供参考
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
+                        <input type="checkbox" class="block-fictional-checkbox" ${blockFictionalEnabled ? 'checked' : ''}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        虚构演绎，仅供娱乐
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                        <input type="checkbox" class="block-ai-declared-checkbox" ${blockAIDeclaredEnabled ? 'checked' : ''}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        内容由 AI 生成
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
+                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">平台提示：</div>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                        <input type="checkbox" class="block-ai-generated-checkbox" ${blockAIGeneratedEnabled ? 'checked' : ''}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        疑似使用了 AI 生成技术，请谨慎甄别
+                    </label>
+                </div>
+
+                <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
+                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">关键字检测范围：</div>
                     <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
                         <input type="checkbox" class="block-name-checkbox" ${blockNameEnabled ? 'checked' : ''}
                                style="margin-right: 8px; transform: scale(1.2);">
@@ -1823,21 +1855,32 @@ export class UIFactory {
                 <div class="keyword-list" style="margin-bottom: 15px; max-height: 200px; overflow-y: auto;"></div>
             `;
 
-            const dialog = UIFactory.createDialog('keyword-setting-dialog', '管理屏蔽关键字', content, () => {
+            const dialog = UIFactory.createDialog('keyword-setting-dialog', '内容屏蔽设置', content, () => {
                 const pressRCheckbox = dialog.querySelector('.press-r-checkbox');
                 const blockNameCheckbox = dialog.querySelector('.block-name-checkbox');
                 const blockDescCheckbox = dialog.querySelector('.block-desc-checkbox');
                 const blockTagsCheckbox = dialog.querySelector('.block-tags-checkbox');
+                const blockAIGeneratedCheckbox = dialog.querySelector('.block-ai-generated-checkbox');
+                const blockAIDeclaredCheckbox = dialog.querySelector('.block-ai-declared-checkbox');
+                const blockPersonalOpinionCheckbox = dialog.querySelector('.block-personal-opinion-checkbox');
+                const blockFictionalCheckbox = dialog.querySelector('.block-fictional-checkbox');
 
                 this.config.saveKeywords(tempKeywords, tempKeywordScopes);
                 this.config.savePressRSetting(pressRCheckbox.checked);
                 this.config.saveBlockNameSetting(blockNameCheckbox.checked);
                 this.config.saveBlockDescSetting(blockDescCheckbox.checked);
                 this.config.saveBlockTagsSetting(blockTagsCheckbox.checked);
+                this.config.saveBlockAIGeneratedSetting(blockAIGeneratedCheckbox.checked);
+                this.config.saveBlockAIDeclaredSetting(blockAIDeclaredCheckbox.checked);
+                this.config.saveBlockPersonalOpinionSetting(blockPersonalOpinionCheckbox.checked);
+                this.config.saveBlockFictionalSetting(blockFictionalCheckbox.checked);
 
-                this.notificationManager.showMessage('🚫 屏蔽关键字: 设置已更新');
+                this.notificationManager.showMessage('🚫 内容屏蔽: 设置已更新');
                 return true;
             });
+            dialog.style.maxHeight = '85vh';
+            dialog.style.overflowY = 'auto';
+            dialog.style.boxSizing = 'border-box';
 
             const addKeyword = () => {
                 const input = dialog.querySelector('.keyword-input');
@@ -1879,6 +1922,18 @@ export class UIFactory {
             dialog.querySelector('.block-tags-checkbox').addEventListener('click', (e) => {
                 e.stopPropagation();
             });
+            dialog.querySelector('.block-ai-generated-checkbox').addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            dialog.querySelector('.block-ai-declared-checkbox').addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            dialog.querySelector('.block-personal-opinion-checkbox').addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            dialog.querySelector('.block-fictional-checkbox').addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
 
             // 导出功能
             const exportKeywords = () => {
@@ -1899,7 +1954,7 @@ export class UIFactory {
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                this.notificationManager.showMessage('💾 屏蔽账号: 关键字已导出');
+                this.notificationManager.showMessage('💾 内容屏蔽: 关键字已导出');
             };
 
             dialog.querySelector('.export-keywords').addEventListener('click', (e) => {
@@ -1921,7 +1976,7 @@ export class UIFactory {
                             const entries = parseImportedContent(content, file.name);
                             if (entries && mergeImportedEntries(entries)) {
                                 updateList();
-                                this.notificationManager.showMessage('📁 屏蔽账号: 关键字导入成功');
+                                this.notificationManager.showMessage('📁 内容屏蔽: 关键字导入成功');
                             } else {
                                 alert('文件内容为空或格式不正确！');
                             }

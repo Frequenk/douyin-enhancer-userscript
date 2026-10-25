@@ -11,7 +11,8 @@ export const SELECTORS = {
         ].join(', '),
         adIndicator: 'svg[viewBox="0 0 30 16"]',
         videoElement: 'video',
-        videoDesc: '[data-e2e="video-desc"]'
+        videoDesc: '[data-e2e="video-desc"]',
+        officialContentIndicator: '.safetyBar'
     };
 
     // ========== 视频控制器 ==========
