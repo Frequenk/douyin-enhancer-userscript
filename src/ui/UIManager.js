@@ -1766,6 +1766,7 @@ export class UIFactory {
             const blockDescEnabled = this.config.get('blockKeywords').blockDesc;
             const blockTagsEnabled = this.config.get('blockKeywords').blockTags;
             const blockAIGeneratedEnabled = this.config.get('blockKeywords').blockAIGenerated;
+            const blockAIContainedEnabled = this.config.get('blockKeywords').blockAIContained;
             const blockAIDeclaredEnabled = this.config.get('blockKeywords').blockAIDeclared;
             const blockPersonalOpinionEnabled = this.config.get('blockKeywords').blockPersonalOpinion;
             const blockFictionalEnabled = this.config.get('blockKeywords').blockFictional;
@@ -1808,10 +1809,15 @@ export class UIFactory {
 
                 <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
                     <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">平台提示：</div>
-                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
                         <input type="checkbox" class="block-ai-generated-checkbox" ${blockAIGeneratedEnabled ? 'checked' : ''}
                                style="margin-right: 8px; transform: scale(1.2);">
                         疑似使用了 AI 生成技术，请谨慎甄别
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                        <input type="checkbox" class="block-ai-contained-checkbox" ${blockAIContainedEnabled ? 'checked' : ''}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        作品含 AI 生成内容
                     </label>
                 </div>
 
@@ -1861,6 +1867,7 @@ export class UIFactory {
                 const blockDescCheckbox = dialog.querySelector('.block-desc-checkbox');
                 const blockTagsCheckbox = dialog.querySelector('.block-tags-checkbox');
                 const blockAIGeneratedCheckbox = dialog.querySelector('.block-ai-generated-checkbox');
+                const blockAIContainedCheckbox = dialog.querySelector('.block-ai-contained-checkbox');
                 const blockAIDeclaredCheckbox = dialog.querySelector('.block-ai-declared-checkbox');
                 const blockPersonalOpinionCheckbox = dialog.querySelector('.block-personal-opinion-checkbox');
                 const blockFictionalCheckbox = dialog.querySelector('.block-fictional-checkbox');
@@ -1871,6 +1878,7 @@ export class UIFactory {
                 this.config.saveBlockDescSetting(blockDescCheckbox.checked);
                 this.config.saveBlockTagsSetting(blockTagsCheckbox.checked);
                 this.config.saveBlockAIGeneratedSetting(blockAIGeneratedCheckbox.checked);
+                this.config.saveBlockAIContainedSetting(blockAIContainedCheckbox.checked);
                 this.config.saveBlockAIDeclaredSetting(blockAIDeclaredCheckbox.checked);
                 this.config.saveBlockPersonalOpinionSetting(blockPersonalOpinionCheckbox.checked);
                 this.config.saveBlockFictionalSetting(blockFictionalCheckbox.checked);
@@ -1923,6 +1931,9 @@ export class UIFactory {
                 e.stopPropagation();
             });
             dialog.querySelector('.block-ai-generated-checkbox').addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            dialog.querySelector('.block-ai-contained-checkbox').addEventListener('click', (e) => {
                 e.stopPropagation();
             });
             dialog.querySelector('.block-ai-declared-checkbox').addEventListener('click', (e) => {

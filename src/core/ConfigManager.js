@@ -31,6 +31,7 @@ export class ConfigManager {
                     blockDesc: this.loadBlockDescSetting(),
                     blockTags: this.loadBlockTagsSetting(),
                     blockAIGenerated: this.loadBlockAIGeneratedSetting(),
+                    blockAIContained: this.loadBlockAIContainedSetting(),
                     blockAIDeclared: this.loadBlockAIDeclaredSetting(),
                     blockPersonalOpinion: this.loadBlockPersonalOpinionSetting(),
                     blockFictional: this.loadBlockFictionalSetting()
@@ -373,6 +374,15 @@ export class ConfigManager {
         saveBlockAIGeneratedSetting(enabled) {
             this.config.blockKeywords.blockAIGenerated = enabled;
             localStorage.setItem('douyin_block_ai_generated_enabled', enabled.toString());
+        }
+
+        loadBlockAIContainedSetting() {
+            return localStorage.getItem('douyin_block_ai_contained_enabled') === 'true';
+        }
+
+        saveBlockAIContainedSetting(enabled) {
+            this.config.blockKeywords.blockAIContained = enabled;
+            localStorage.setItem('douyin_block_ai_contained_enabled', enabled.toString());
         }
 
         loadBlockAIDeclaredSetting() {

@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.6
-// @changelog 修复“作者声明：个人观点，仅供参考”无法触发屏蔽的问题；统一作者声明标识的前缀处理，兼容有、无前缀的显示形式；
+// @version 5.7
+// @changelog 内容屏蔽的“平台提示”分组新增“作品含 AI 生成内容”独立选项，默认关闭，与疑似 AI 提示分别控制，沿用内容屏蔽总开关和按 R 设置；
 // @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -109,6 +109,7 @@
           blockDesc: this.loadBlockDescSetting(),
           blockTags: this.loadBlockTagsSetting(),
           blockAIGenerated: this.loadBlockAIGeneratedSetting(),
+          blockAIContained: this.loadBlockAIContainedSetting(),
           blockAIDeclared: this.loadBlockAIDeclaredSetting(),
           blockPersonalOpinion: this.loadBlockPersonalOpinionSetting(),
           blockFictional: this.loadBlockFictionalSetting()
@@ -388,6 +389,13 @@
     saveBlockAIGeneratedSetting(enabled) {
       this.config.blockKeywords.blockAIGenerated = enabled;
       localStorage.setItem("douyin_block_ai_generated_enabled", enabled.toString());
+    }
+    loadBlockAIContainedSetting() {
+      return localStorage.getItem("douyin_block_ai_contained_enabled") === "true";
+    }
+    saveBlockAIContainedSetting(enabled) {
+      this.config.blockKeywords.blockAIContained = enabled;
+      localStorage.setItem("douyin_block_ai_contained_enabled", enabled.toString());
     }
     loadBlockAIDeclaredSetting() {
       return localStorage.getItem("douyin_block_ai_declared_enabled") === "true";
@@ -2404,6 +2412,7 @@
       const blockDescEnabled = this.config.get("blockKeywords").blockDesc;
       const blockTagsEnabled = this.config.get("blockKeywords").blockTags;
       const blockAIGeneratedEnabled = this.config.get("blockKeywords").blockAIGenerated;
+      const blockAIContainedEnabled = this.config.get("blockKeywords").blockAIContained;
       const blockAIDeclaredEnabled = this.config.get("blockKeywords").blockAIDeclared;
       const blockPersonalOpinionEnabled = this.config.get("blockKeywords").blockPersonalOpinion;
       const blockFictionalEnabled = this.config.get("blockKeywords").blockFictional;
@@ -2445,10 +2454,15 @@
 
                 <div style="margin-bottom: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 6px;">
                     <div style="color: rgba(255, 255, 255, 0.7); font-size: 12px; margin-bottom: 8px;">\u5E73\u53F0\u63D0\u793A\uFF1A</div>
-                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px; margin-bottom: 6px;">
                         <input type="checkbox" class="block-ai-generated-checkbox" ${blockAIGeneratedEnabled ? "checked" : ""}
                                style="margin-right: 8px; transform: scale(1.2);">
                         \u7591\u4F3C\u4F7F\u7528\u4E86 AI \u751F\u6210\u6280\u672F\uFF0C\u8BF7\u8C28\u614E\u7504\u522B
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer; color: white; font-size: 13px;">
+                        <input type="checkbox" class="block-ai-contained-checkbox" ${blockAIContainedEnabled ? "checked" : ""}
+                               style="margin-right: 8px; transform: scale(1.2);">
+                        \u4F5C\u54C1\u542B AI \u751F\u6210\u5185\u5BB9
                     </label>
                 </div>
 
@@ -2497,6 +2511,7 @@
         const blockDescCheckbox = dialog.querySelector(".block-desc-checkbox");
         const blockTagsCheckbox = dialog.querySelector(".block-tags-checkbox");
         const blockAIGeneratedCheckbox = dialog.querySelector(".block-ai-generated-checkbox");
+        const blockAIContainedCheckbox = dialog.querySelector(".block-ai-contained-checkbox");
         const blockAIDeclaredCheckbox = dialog.querySelector(".block-ai-declared-checkbox");
         const blockPersonalOpinionCheckbox = dialog.querySelector(".block-personal-opinion-checkbox");
         const blockFictionalCheckbox = dialog.querySelector(".block-fictional-checkbox");
@@ -2506,6 +2521,7 @@
         this.config.saveBlockDescSetting(blockDescCheckbox.checked);
         this.config.saveBlockTagsSetting(blockTagsCheckbox.checked);
         this.config.saveBlockAIGeneratedSetting(blockAIGeneratedCheckbox.checked);
+        this.config.saveBlockAIContainedSetting(blockAIContainedCheckbox.checked);
         this.config.saveBlockAIDeclaredSetting(blockAIDeclaredCheckbox.checked);
         this.config.saveBlockPersonalOpinionSetting(blockPersonalOpinionCheckbox.checked);
         this.config.saveBlockFictionalSetting(blockFictionalCheckbox.checked);
@@ -2551,6 +2567,9 @@
         e.stopPropagation();
       });
       dialog.querySelector(".block-ai-generated-checkbox").addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+      dialog.querySelector(".block-ai-contained-checkbox").addEventListener("click", (e) => {
         e.stopPropagation();
       });
       dialog.querySelector(".block-ai-declared-checkbox").addEventListener("click", (e) => {
@@ -2915,6 +2934,7 @@
     { key: "blockPersonalOpinion", text: "\u4E2A\u4EBA\u89C2\u70B9\uFF0C\u4EC5\u4F9B\u53C2\u8003", reason: "\u4E2A\u4EBA\u89C2\u70B9\u5185\u5BB9" },
     { key: "blockFictional", text: "\u865A\u6784\u6F14\u7ECE\uFF0C\u4EC5\u4F9B\u5A31\u4E50", reason: "\u865A\u6784\u6F14\u7ECE\u5185\u5BB9" },
     { key: "blockAIGenerated", text: "\u7591\u4F3C\u4F7F\u7528\u4E86AI\u751F\u6210\u6280\u672F\uFF0C\u8BF7\u8C28\u614E\u7504\u522B", reason: "\u7591\u4F3C AI \u751F\u6210\u5185\u5BB9" },
+    { key: "blockAIContained", text: "\u4F5C\u54C1\u542BAI\u751F\u6210\u5185\u5BB9", reason: "\u4F5C\u54C1\u542B AI \u751F\u6210\u5185\u5BB9" },
     { key: "blockAIDeclared", text: "\u5185\u5BB9\u7531AI\u751F\u6210", reason: "\u4F5C\u8005\u58F0\u660E\u7684 AI \u751F\u6210\u5185\u5BB9" }
   ];
   var VideoDetectionStrategies = class {

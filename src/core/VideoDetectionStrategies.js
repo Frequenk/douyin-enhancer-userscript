@@ -5,6 +5,7 @@ const OFFICIAL_CONTENT_RULES = [
     { key: 'blockPersonalOpinion', text: '个人观点，仅供参考', reason: '个人观点内容' },
     { key: 'blockFictional', text: '虚构演绎，仅供娱乐', reason: '虚构演绎内容' },
     { key: 'blockAIGenerated', text: '疑似使用了AI生成技术，请谨慎甄别', reason: '疑似 AI 生成内容' },
+    { key: 'blockAIContained', text: '作品含AI生成内容', reason: '作品含 AI 生成内容' },
     { key: 'blockAIDeclared', text: '内容由AI生成', reason: '作者声明的 AI 生成内容' }
 ];
 

@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.6
-// @changelog 修复“作者声明：个人观点，仅供参考”无法触发屏蔽的问题；统一作者声明标识的前缀处理，兼容有、无前缀的显示形式；
+// @version 5.7
+// @changelog 内容屏蔽的“平台提示”分组新增“作品含 AI 生成内容”独立选项，默认关闭，与疑似 AI 提示分别控制，沿用内容屏蔽总开关和按 R 设置；
 // @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
