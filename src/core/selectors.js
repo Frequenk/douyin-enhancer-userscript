@@ -1,4 +1,5 @@
 export const SELECTORS = {
+        liveCard: "[data-e2e='feed-live']",
         activeVideo: "[data-e2e='feed-active-video']",
         resolutionOptions: [
             ".xgplayer-playing div.virtual > div.item",

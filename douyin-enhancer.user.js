@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.7
-// @changelog 内容屏蔽的“平台提示”分组新增“作品含 AI 生成内容”独立选项，默认关闭，与疑似 AI 提示分别控制，沿用内容屏蔽总开关和按 R 设置；
+// @version 5.8
+// @changelog 修复关闭“跳直播”时无法过滤直播广告的问题：“跳广告”现支持识别推荐信息流中的直播广告标签，跳过后计入广告统计；修复连续直播卡片的跳过状态未重置问题；
 // @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -461,6 +461,7 @@
 
   // src/core/selectors.js
   var SELECTORS = {
+    liveCard: "[data-e2e='feed-live']",
     activeVideo: "[data-e2e='feed-active-video']",
     resolutionOptions: [
       ".xgplayer-playing div.virtual > div.item",
@@ -3105,6 +3106,7 @@
       this.speedModeSkipped = false;
       this.lastSkippedLiveUrl = "";
       this.isCurrentlySkipping = false;
+      this.currentLiveContainer = null;
       this.currentSpeedDuration = null;
       this.currentSpeedMode = this.config.get("speedMode").mode;
       this.lastTickTime = Date.now();
@@ -3672,8 +3674,13 @@
       const innermostElements = elementsWithText.filter((el) => {
         return !elementsWithText.some((otherEl) => el !== otherEl && el.contains(otherEl));
       });
-      const isLive = innermostElements.some((el) => isElementInViewport(el));
-      if (isLive) {
+      const liveContainers = innermostElements.filter((el) => isElementInViewport(el)).map((el) => el.closest(SELECTORS.liveCard));
+      const liveContainer = getBestVisibleElement(liveContainers);
+      if (liveContainer) {
+        if (liveContainer !== this.currentLiveContainer) {
+          this.currentLiveContainer = liveContainer;
+          this.isCurrentlySkipping = false;
+        }
         this.lastVideoUrl = "\u76F4\u64AD";
         if (this.config.isEnabled("skipLive")) {
           if (!this.isCurrentlySkipping) {
@@ -3681,9 +3688,12 @@
             this.statsTracker.inc("skipLiveCount", 1);
             this.isCurrentlySkipping = true;
           }
+        } else if (!this.isCurrentlySkipping && this.strategies.checkAd(liveContainer)) {
+          this.isCurrentlySkipping = true;
         }
         return;
       }
+      this.currentLiveContainer = null;
       this.isCurrentlySkipping = false;
       const activeContainers = document.querySelectorAll(SELECTORS.activeVideo);
       const activeContainer = getBestVisibleElement(activeContainers);

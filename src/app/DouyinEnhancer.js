@@ -31,6 +31,7 @@ export class DouyinEnhancer {
             this.speedModeSkipped = false;
             this.lastSkippedLiveUrl = '';
             this.isCurrentlySkipping = false;
+            this.currentLiveContainer = null;
             this.currentSpeedDuration = null;
             this.currentSpeedMode = this.config.get('speedMode').mode;
             this.lastTickTime = Date.now();
@@ -616,8 +617,15 @@ export class DouyinEnhancer {
             const innermostElements = elementsWithText.filter(el => {
                 return !elementsWithText.some(otherEl => el !== otherEl && el.contains(otherEl));
             });
-            const isLive = innermostElements.some(el => isElementInViewport(el));
-            if (isLive) {
+            const liveContainers = innermostElements
+                .filter(el => isElementInViewport(el))
+                .map(el => el.closest(SELECTORS.liveCard));
+            const liveContainer = getBestVisibleElement(liveContainers);
+            if (liveContainer) {
+                if (liveContainer !== this.currentLiveContainer) {
+                    this.currentLiveContainer = liveContainer;
+                    this.isCurrentlySkipping = false;
+                }
                 this.lastVideoUrl = "直播";
                 if (this.config.isEnabled('skipLive')) {
                     if (!this.isCurrentlySkipping) {
@@ -625,9 +633,12 @@ export class DouyinEnhancer {
                         this.statsTracker.inc('skipLiveCount', 1);
                         this.isCurrentlySkipping = true;
                     }
+                } else if (!this.isCurrentlySkipping && this.strategies.checkAd(liveContainer)) {
+                    this.isCurrentlySkipping = true;
                 }
                 return;
             }
+            this.currentLiveContainer = null;
             this.isCurrentlySkipping = false;
             const activeContainers = document.querySelectorAll(SELECTORS.activeVideo);
             const activeContainer = getBestVisibleElement(activeContainers);
