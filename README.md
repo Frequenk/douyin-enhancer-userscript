@@ -4,13 +4,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Frequenk/douyin-enhancer-userscript?style=flat&logo=github&label=Stars&color=white)](https://github.com/Frequenk/douyin-enhancer-userscript/stargazers)
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
-一个面向网页版抖音（含新版播放器界面）的用户脚本：自动跳过直播和广告、内容屏蔽（账号名、文案、话题标签、作者声明和平台提示）、自动切最高画质（短视频与直播）、分辨率筛选、AI 智能筛选与自动点赞、极速模式、每日统计，以及工具栏按钮显示和默认开关管理。支持自动清屏默认值设置，并通过“直播净化”为直播推荐页和信息流进入的直播间记忆弹幕及礼物相关设置。
-
-内容屏蔽按账号名称、视频简介和话题标签匹配关键字时忽略大小写。
-
-可在工具栏的「按钮设置」中选择数据缓存目录，保存设置和每日统计。把目录放在 OneDrive 等同步工具的本地文件夹中，即可在其他设备加载配置和已同步的统计。原关键词和统计的导入导出入口已移除。
-
-目录授权失效时，可点击「重新授权」恢复对上次选中目录的访问。
+面向网页版抖音的用户脚本，支持自动跳过直播和广告、内容屏蔽、自动切最高画质、分辨率筛选、AI 智能筛选与点赞、极速模式和每日统计。可自定义工具栏按钮与自动清屏，直播净化会记住弹幕和礼物设置。配置和统计可保存到本地目录。
 
 ## 📸 效果预览
 
