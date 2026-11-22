@@ -66,7 +66,8 @@ export class DirectoryDataStore {
             if (!saved) return;
             const root = saved.root ?? saved;
             if (await root.queryPermission({ mode: 'readwrite' }) !== 'granted') {
-                this.showStatus('需重新授权', '当前使用浏览器缓存，请重新选择目录');
+                this.directoryToAuthorize = root;
+                this.showStatus('需重新授权', `上次选择：${root.name}`);
                 return;
             }
             await this.connect(root, saved, false);
@@ -77,16 +78,31 @@ export class DirectoryDataStore {
 
     async select() {
         const root = await window.showDirectoryPicker({ mode: 'readwrite' });
+        await this.connectFromButton(root);
+    }
+
+    async reauthorize() {
+        const root = this.directoryToAuthorize;
+        if (!root) return;
+        const permission = await root.requestPermission({ mode: 'readwrite' });
+        if (permission !== 'granted') {
+            this.showStatus('需重新授权', `上次选择：${root.name}`);
+            return;
+        }
+        await this.connectFromButton(root, true);
+    }
+
+    async connectFromButton(root, reuseBaseline = false) {
         await this.beforeConnect?.();
         const connection = this.queue.then(async () => {
             const saved = await this.catalog();
-            await this.connect(root, saved, true);
+            await this.connect(root, saved, true, reuseBaseline);
         });
         this.queue = connection.catch(() => {});
         await connection;
     }
 
-    async connect(root, saved, interactive) {
+    async connect(root, saved, interactive, reuseBaseline = !interactive) {
         const sameRoot = saved?.root && await root.isSameEntry(saved.root);
         const sameActive = this.active && await root.isSameEntry(this.active.root);
         const folder = await root.getDirectoryHandle(this.folder, { create: true });
@@ -100,7 +116,7 @@ export class DirectoryDataStore {
         if (disk && (!this.preferDirectory || (sameActive && this.active.paused)) &&
             this.serialize(disk.data) !== this.serialize(working.data)) {
             const hasBrowserData = working.updatedAt || this.hasData(working.data);
-            const accepted = !interactive && sameRoot && saved.baseline === baseline;
+            const accepted = reuseBaseline && sameRoot && saved.baseline === baseline;
             if (hasBrowserData && !accepted) {
                 const choice = await this.choose(working.updatedAt, disk.updatedAt);
                 if (choice === 'cancel') return;
@@ -118,6 +134,7 @@ export class DirectoryDataStore {
         }
         await this.catalog({ root, baseline });
         this.active = { ...selected, root, folder, file, raw };
+        this.directoryToAuthorize = null;
         this.showStatus(root.name, `${root.name} / ${this.folder} / ${this.filename}`);
         this.onLoad?.(selected.data, interactive);
     }
@@ -294,12 +311,16 @@ export class DirectoryDataStore {
         help.style.cssText = `width:18px;height:18px;border:1px solid ${helpBorder};border-radius:50%;color:${mutedColor};background:transparent;cursor:pointer;padding:0;font:inherit;line-height:16px`;
         help.addEventListener('click', () => this.showDirectoryHelp());
         const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;align-items:center;gap:6px';
+        actions.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap';
         const select = document.createElement('button');
         select.type = 'button';
         select.textContent = '选择目录';
         select.disabled = !this.supported;
         select.style.cssText = `flex:none;padding:4px 10px;border:1px solid ${buttonBorder};border-radius:6px;color:inherit;background:${buttonBackground};cursor:pointer;font:inherit`;
+        const reconnect = document.createElement('button');
+        reconnect.type = 'button';
+        reconnect.textContent = '重新授权';
+        reconnect.style.cssText = select.style.cssText;
         const status = document.createElement('span');
         status.setAttribute('role', 'status');
         status.style.cssText = `min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${mutedColor}`;
@@ -307,22 +328,27 @@ export class DirectoryDataStore {
             if (!section.isConnected && section.dataset.mounted) this.listeners.delete(render);
             status.textContent = this.status;
             status.title = this.detail ?? this.status;
+            reconnect.hidden = !this.directoryToAuthorize;
         };
         this.listeners.add(render);
         render();
         queueMicrotask(() => { section.dataset.mounted = 'true'; });
-        select.addEventListener('click', async () => {
-            select.disabled = true;
-            try {
-                await this.select();
-            } catch (error) {
-                if (error.name !== 'AbortError') this.showStatus('目录操作失败', error.message);
-            } finally {
-                select.disabled = false;
-            }
-        });
+        for (const [button, action] of [[select, () => this.select()], [reconnect, () => this.reauthorize()]]) {
+            button.addEventListener('click', async () => {
+                select.disabled = true;
+                reconnect.disabled = true;
+                try {
+                    await action();
+                } catch (error) {
+                    if (error.name !== 'AbortError') this.showStatus('目录操作失败', error.message);
+                } finally {
+                    select.disabled = !this.supported;
+                    reconnect.disabled = false;
+                }
+            });
+        }
         heading.append(title, help);
-        actions.append(select, status);
+        actions.append(reconnect, select, status);
         section.append(heading, actions);
         return section;
     }

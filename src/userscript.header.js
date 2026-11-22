@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 6.0
-// @changelog 新增数据缓存目录，支持保存设置和历史统计。每日统计按会话独立写入并自动汇总，适用于多个窗口或设备同时使用。新增同步冲突提示，移除关键词和统计的导入导出入口。
+// @version 6.1
+// @changelog 数据缓存目录授权失效时，可直接对上次选中的目录重新授权，无需重新选择路径。
 // @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、每日统计及本地目录同步
 // @author Frequenk
 // @license GPL-3.0 License

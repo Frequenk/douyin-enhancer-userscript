@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 6.0
-// @changelog 新增数据缓存目录，支持保存设置和历史统计。每日统计按会话独立写入并自动汇总，适用于多个窗口或设备同时使用。新增同步冲突提示，移除关键词和统计的导入导出入口。
+// @version 6.1
+// @changelog 数据缓存目录授权失效时，可直接对上次选中的目录重新授权，无需重新选择路径。
 // @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、每日统计及本地目录同步
 // @author Frequenk
 // @license GPL-3.0 License
@@ -83,7 +83,8 @@
           return;
         const root = (_a = saved.root) != null ? _a : saved;
         if (await root.queryPermission({ mode: "readwrite" }) !== "granted") {
-          this.showStatus("\u9700\u91CD\u65B0\u6388\u6743", "\u5F53\u524D\u4F7F\u7528\u6D4F\u89C8\u5668\u7F13\u5B58\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u76EE\u5F55");
+          this.directoryToAuthorize = root;
+          this.showStatus("\u9700\u91CD\u65B0\u6388\u6743", `\u4E0A\u6B21\u9009\u62E9\uFF1A${root.name}`);
           return;
         }
         await this.connect(root, saved, false);
@@ -92,18 +93,32 @@
       }
     }
     async select() {
-      var _a;
       const root = await window.showDirectoryPicker({ mode: "readwrite" });
+      await this.connectFromButton(root);
+    }
+    async reauthorize() {
+      const root = this.directoryToAuthorize;
+      if (!root)
+        return;
+      const permission = await root.requestPermission({ mode: "readwrite" });
+      if (permission !== "granted") {
+        this.showStatus("\u9700\u91CD\u65B0\u6388\u6743", `\u4E0A\u6B21\u9009\u62E9\uFF1A${root.name}`);
+        return;
+      }
+      await this.connectFromButton(root, true);
+    }
+    async connectFromButton(root, reuseBaseline = false) {
+      var _a;
       await ((_a = this.beforeConnect) == null ? void 0 : _a.call(this));
       const connection = this.queue.then(async () => {
         const saved = await this.catalog();
-        await this.connect(root, saved, true);
+        await this.connect(root, saved, true, reuseBaseline);
       });
       this.queue = connection.catch(() => {
       });
       await connection;
     }
-    async connect(root, saved, interactive) {
+    async connect(root, saved, interactive, reuseBaseline = !interactive) {
       var _a, _b, _c;
       const sameRoot = (saved == null ? void 0 : saved.root) && await root.isSameEntry(saved.root);
       const sameActive = this.active && await root.isSameEntry(this.active.root);
@@ -116,7 +131,7 @@
       let selected = disk != null ? disk : working;
       if (disk && (!this.preferDirectory || sameActive && this.active.paused) && this.serialize(disk.data) !== this.serialize(working.data)) {
         const hasBrowserData = working.updatedAt || this.hasData(working.data);
-        const accepted = !interactive && sameRoot && saved.baseline === baseline;
+        const accepted = reuseBaseline && sameRoot && saved.baseline === baseline;
         if (hasBrowserData && !accepted) {
           const choice = await this.choose(working.updatedAt, disk.updatedAt);
           if (choice === "cancel")
@@ -136,6 +151,7 @@
       }
       await this.catalog({ root, baseline });
       this.active = { ...selected, root, folder, file, raw };
+      this.directoryToAuthorize = null;
       this.showStatus(root.name, `${root.name} / ${this.folder} / ${this.filename}`);
       (_c = this.onLoad) == null ? void 0 : _c.call(this, selected.data, interactive);
     }
@@ -314,12 +330,16 @@
       help.style.cssText = `width:18px;height:18px;border:1px solid ${helpBorder};border-radius:50%;color:${mutedColor};background:transparent;cursor:pointer;padding:0;font:inherit;line-height:16px`;
       help.addEventListener("click", () => this.showDirectoryHelp());
       const actions = document.createElement("div");
-      actions.style.cssText = "display:flex;align-items:center;gap:6px";
+      actions.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap";
       const select = document.createElement("button");
       select.type = "button";
       select.textContent = "\u9009\u62E9\u76EE\u5F55";
       select.disabled = !this.supported;
       select.style.cssText = `flex:none;padding:4px 10px;border:1px solid ${buttonBorder};border-radius:6px;color:inherit;background:${buttonBackground};cursor:pointer;font:inherit`;
+      const reconnect = document.createElement("button");
+      reconnect.type = "button";
+      reconnect.textContent = "\u91CD\u65B0\u6388\u6743";
+      reconnect.style.cssText = select.style.cssText;
       const status = document.createElement("span");
       status.setAttribute("role", "status");
       status.style.cssText = `min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${mutedColor}`;
@@ -329,25 +349,30 @@
           this.listeners.delete(render);
         status.textContent = this.status;
         status.title = (_a2 = this.detail) != null ? _a2 : this.status;
+        reconnect.hidden = !this.directoryToAuthorize;
       };
       this.listeners.add(render);
       render();
       queueMicrotask(() => {
         section.dataset.mounted = "true";
       });
-      select.addEventListener("click", async () => {
-        select.disabled = true;
-        try {
-          await this.select();
-        } catch (error) {
-          if (error.name !== "AbortError")
-            this.showStatus("\u76EE\u5F55\u64CD\u4F5C\u5931\u8D25", error.message);
-        } finally {
-          select.disabled = false;
-        }
-      });
+      for (const [button, action] of [[select, () => this.select()], [reconnect, () => this.reauthorize()]]) {
+        button.addEventListener("click", async () => {
+          select.disabled = true;
+          reconnect.disabled = true;
+          try {
+            await action();
+          } catch (error) {
+            if (error.name !== "AbortError")
+              this.showStatus("\u76EE\u5F55\u64CD\u4F5C\u5931\u8D25", error.message);
+          } finally {
+            select.disabled = !this.supported;
+            reconnect.disabled = false;
+          }
+        });
+      }
       heading.append(title, help);
-      actions.append(select, status);
+      actions.append(reconnect, select, status);
       section.append(heading, actions);
       return section;
     }
