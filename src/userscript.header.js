@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.8
-// @changelog 修复关闭“跳直播”时无法过滤直播广告的问题：“跳广告”现支持识别推荐信息流中的直播广告标签，跳过后计入广告统计；修复连续直播卡片的跳过状态未重置问题；
+// @version 5.9
+// @changelog 内容屏蔽的关键字匹配忽略大小写，适用于账号名称、视频简介和话题标签。
 // @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License

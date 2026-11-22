@@ -77,9 +77,9 @@ export class VideoDetectionStrategies {
             // 检测名称（账号昵称）
             if (blockName && !matchedKeyword) {
                 const accountEl = container.querySelector(SELECTORS.accountName);
-                const accountName = accountEl?.textContent.trim();
+                const accountName = accountEl?.textContent.trim().toLowerCase();
                 if (accountName) {
-                    matchedKeyword = keywords.find(kw => accountName.includes(kw)
+                    matchedKeyword = keywords.find(kw => accountName.includes(kw.toLowerCase())
                         && this.config.isKeywordScopeEnabled(kw, 'name'));
                     if (matchedKeyword) matchType = '名称';
                 }
@@ -90,9 +90,9 @@ export class VideoDetectionStrategies {
                 const descEl = container.querySelector(SELECTORS.videoDesc);
                 if (descEl) {
                     // 获取纯文本，然后移除 #xxx 标签
-                    const descText = descEl.textContent.replace(/#\S+/g, '').trim();
+                    const descText = descEl.textContent.replace(/#\S+/g, '').trim().toLowerCase();
                     if (descText) {
-                        matchedKeyword = keywords.find(kw => descText.includes(kw)
+                        matchedKeyword = keywords.find(kw => descText.includes(kw.toLowerCase())
                             && this.config.isKeywordScopeEnabled(kw, 'desc'));
                         if (matchedKeyword) matchType = '简介';
                     }
@@ -105,9 +105,9 @@ export class VideoDetectionStrategies {
                 if (descEl) {
                     // 提取所有 #xxx 标签
                     const tags = descEl.textContent.match(/#\S+/g) || [];
-                    const tagsText = tags.join(' ');
+                    const tagsText = tags.join(' ').toLowerCase();
                     if (tagsText) {
-                        matchedKeyword = keywords.find(kw => tagsText.includes(kw)
+                        matchedKeyword = keywords.find(kw => tagsText.includes(kw.toLowerCase())
                             && this.config.isKeywordScopeEnabled(kw, 'tags'));
                         if (matchedKeyword) matchType = '标签';
                     }

@@ -6,8 +6,8 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.8
-// @changelog 修复关闭“跳直播”时无法过滤直播广告的问题：“跳广告”现支持识别推荐信息流中的直播广告标签，跳过后计入广告统计；修复连续直播卡片的跳过状态未重置问题；
+// @version 5.9
+// @changelog 内容屏蔽的关键字匹配忽略大小写，适用于账号名称、视频简介和话题标签。
 // @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
 // @author Frequenk
 // @license GPL-3.0 License
@@ -2999,9 +2999,9 @@
       let matchType = "";
       if (blockName && !matchedKeyword) {
         const accountEl = container.querySelector(SELECTORS.accountName);
-        const accountName = accountEl == null ? void 0 : accountEl.textContent.trim();
+        const accountName = accountEl == null ? void 0 : accountEl.textContent.trim().toLowerCase();
         if (accountName) {
-          matchedKeyword = keywords.find((kw) => accountName.includes(kw) && this.config.isKeywordScopeEnabled(kw, "name"));
+          matchedKeyword = keywords.find((kw) => accountName.includes(kw.toLowerCase()) && this.config.isKeywordScopeEnabled(kw, "name"));
           if (matchedKeyword)
             matchType = "\u540D\u79F0";
         }
@@ -3009,9 +3009,9 @@
       if (blockDesc && !matchedKeyword) {
         const descEl = container.querySelector(SELECTORS.videoDesc);
         if (descEl) {
-          const descText = descEl.textContent.replace(/#\S+/g, "").trim();
+          const descText = descEl.textContent.replace(/#\S+/g, "").trim().toLowerCase();
           if (descText) {
-            matchedKeyword = keywords.find((kw) => descText.includes(kw) && this.config.isKeywordScopeEnabled(kw, "desc"));
+            matchedKeyword = keywords.find((kw) => descText.includes(kw.toLowerCase()) && this.config.isKeywordScopeEnabled(kw, "desc"));
             if (matchedKeyword)
               matchType = "\u7B80\u4ECB";
           }
@@ -3021,9 +3021,9 @@
         const descEl = container.querySelector(SELECTORS.videoDesc);
         if (descEl) {
           const tags = descEl.textContent.match(/#\S+/g) || [];
-          const tagsText = tags.join(" ");
+          const tagsText = tags.join(" ").toLowerCase();
           if (tagsText) {
-            matchedKeyword = keywords.find((kw) => tagsText.includes(kw) && this.config.isKeywordScopeEnabled(kw, "tags"));
+            matchedKeyword = keywords.find((kw) => tagsText.includes(kw.toLowerCase()) && this.config.isKeywordScopeEnabled(kw, "tags"));
             if (matchedKeyword)
               matchType = "\u6807\u7B7E";
           }
