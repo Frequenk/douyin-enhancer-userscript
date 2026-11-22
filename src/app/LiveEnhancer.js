@@ -1,3 +1,4 @@
+import { LIVE_DEFAULTS_KEY, scriptData, settingsStorage } from '../core/ScriptData.js';
 ﻿import { NotificationManager } from '../core/NotificationManager.js';
 
 const STYLE_ID = 'dy-live-enhancer-style';
@@ -21,7 +22,6 @@ const TOOLBAR_SELECTORS = [
 ];
 const QUALITY_PLUGIN_SELECTOR = '.QualitySwitchNewPlugin';
 const QUALITY_TRIGGER_SELECTOR = '[data-e2e="quality"]';
-const PURIFICATION_KEY = 'douyin-enhancer-live-defaults';
 const PURIFICATION_OPTIONS = [
     { key: 'danmaku', label: '弹幕开关' },
     { key: 'giftDanmaku', label: '送礼信息', nativeLabel: '送礼信息' },
@@ -45,7 +45,7 @@ export class LiveEnhancer {
             giftDanmaku: true,
             lotteryDanmaku: true,
             giftEffects: true,
-            ...JSON.parse(localStorage.getItem(PURIFICATION_KEY) || '{}')
+            ...JSON.parse(settingsStorage.getItem(LIVE_DEFAULTS_KEY) || '{}')
         };
         this.roomKey = '';
         this.appliedDefaults = new Set();
@@ -388,12 +388,13 @@ export class LiveEnhancer {
         container.className = 'dy-live-purification';
         container.tabIndex = 0;
         container.innerHTML = `<span>直播净化</span><div class="dy-live-purification-panel"><strong>直播净化</strong>${PURIFICATION_OPTIONS.map(option => `<label>${option.label}<input type="checkbox" role="switch" data-key="${option.key}" aria-label="${option.label}"></label>`).join('')}<p>这里只影响每次进入直播间时的默认值，不影响后续正常开关相关选项。</p></div>`;
+        container.querySelector('.dy-live-purification-panel').prepend(scriptData.createControls());
         PURIFICATION_OPTIONS.forEach(option => {
             const input = container.querySelector(`[data-key="${option.key}"]`);
             input.checked = option.inverted ? !this.purificationDefaults[option.key] : this.purificationDefaults[option.key];
             input.addEventListener('change', () => {
                 this.purificationDefaults[option.key] = option.inverted ? !input.checked : input.checked;
-                localStorage.setItem(PURIFICATION_KEY, JSON.stringify(this.purificationDefaults));
+                settingsStorage.setItem(LIVE_DEFAULTS_KEY, JSON.stringify(this.purificationDefaults));
             });
         });
         ['pointerdown', 'mousedown', 'mouseup', 'click', 'keydown'].forEach(eventName => {

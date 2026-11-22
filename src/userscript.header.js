@@ -6,9 +6,9 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.9
-// @changelog 内容屏蔽的关键字匹配忽略大小写，适用于账号名称、视频简介和话题标签。
-// @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
+// @version 6.0
+// @changelog 新增数据缓存目录，支持保存设置和历史统计。每日统计按会话独立写入并自动汇总，适用于多个窗口或设备同时使用。新增同步冲突提示，移除关键词和统计的导入导出入口。
+// @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、每日统计及本地目录同步
 // @author Frequenk
 // @license GPL-3.0 License
 // @run-at document-start

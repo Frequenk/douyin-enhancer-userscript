@@ -6,9 +6,9 @@
 // @match *://*.iesdouyin.com/*
 // @exclude *://lf-zt.douyin.com*
 // @grant none
-// @version 5.9
-// @changelog 内容屏蔽的关键字匹配忽略大小写，适用于账号名称、视频简介和话题标签。
-// @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、数据统计面板（数量/时长/热力图）
+// @version 6.0
+// @changelog 新增数据缓存目录，支持保存设置和历史统计。每日统计按会话独立写入并自动汇总，适用于多个窗口或设备同时使用。新增同步冲突提示，移除关键词和统计的导入导出入口。
+// @description 自动跳过直播、内容屏蔽（关键字/作者声明/平台提示，可自动不感兴趣）、跳过广告、最高分辨率、直播净化、分辨率筛选、AI智能筛选（支持智谱/Ollama）、极速模式、每日统计及本地目录同步
 // @author Frequenk
 // @license GPL-3.0 License
 // @run-at document-start
@@ -17,6 +17,690 @@
 // ==/UserScript==
 
 (() => {
+  // src/core/DirectoryDataStore.js
+  var DirectoryDataStore = class {
+    constructor({ dbName, folder, filename, features, readBrowser, decode, hasData, onLoad, controlTheme, preferDirectory }) {
+      Object.assign(this, { dbName, folder, filename, features, readBrowser, decode, hasData, onLoad, controlTheme, preferDirectory });
+      this.supported = typeof window.showDirectoryPicker === "function";
+      this.timestampKey = `${dbName}-updated-at`;
+      this.status = this.supported ? "\u6D4F\u89C8\u5668\u7F13\u5B58" : "\u4EC5\u652F\u6301\u6D4F\u89C8\u5668\u7F13\u5B58";
+      this.listeners = /* @__PURE__ */ new Set();
+      this.queue = Promise.resolve();
+    }
+    showStatus(text, detail = text) {
+      this.status = text;
+      this.detail = detail;
+      for (const render of this.listeners)
+        render();
+    }
+    markBrowserChanged() {
+      localStorage.setItem(this.timestampKey, (/* @__PURE__ */ new Date()).toISOString());
+    }
+    async catalog(value) {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open(this.dbName, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("settings");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        return await new Promise((resolve, reject) => {
+          const transaction = db.transaction("settings", value ? "readwrite" : "readonly");
+          const store = transaction.objectStore("settings");
+          const request = value ? store.put(value, "directory") : store.get("directory");
+          transaction.oncomplete = () => resolve(request.result);
+          transaction.onabort = () => reject(transaction.error);
+        });
+      } finally {
+        db.close();
+      }
+    }
+    async fingerprint(data) {
+      const bytes = new TextEncoder().encode(this.serialize(data));
+      const hash = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+    serialize(data) {
+      return JSON.stringify(data, (key, value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value))
+          return value;
+        return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
+      });
+    }
+    async browserSnapshot() {
+      return {
+        data: await this.readBrowser(),
+        updatedAt: localStorage.getItem(this.timestampKey)
+      };
+    }
+    async restore() {
+      var _a;
+      if (!this.supported)
+        return;
+      try {
+        const saved = await this.catalog();
+        if (!saved)
+          return;
+        const root = (_a = saved.root) != null ? _a : saved;
+        if (await root.queryPermission({ mode: "readwrite" }) !== "granted") {
+          this.showStatus("\u9700\u91CD\u65B0\u6388\u6743", "\u5F53\u524D\u4F7F\u7528\u6D4F\u89C8\u5668\u7F13\u5B58\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u76EE\u5F55");
+          return;
+        }
+        await this.connect(root, saved, false);
+      } catch (error) {
+        this.showStatus("\u65E0\u6CD5\u6062\u590D\u76EE\u5F55", error.message);
+      }
+    }
+    async select() {
+      var _a;
+      const root = await window.showDirectoryPicker({ mode: "readwrite" });
+      await ((_a = this.beforeConnect) == null ? void 0 : _a.call(this));
+      const connection = this.queue.then(async () => {
+        const saved = await this.catalog();
+        await this.connect(root, saved, true);
+      });
+      this.queue = connection.catch(() => {
+      });
+      await connection;
+    }
+    async connect(root, saved, interactive) {
+      var _a, _b, _c;
+      const sameRoot = (saved == null ? void 0 : saved.root) && await root.isSameEntry(saved.root);
+      const sameActive = this.active && await root.isSameEntry(this.active.root);
+      const folder = await root.getDirectoryHandle(this.folder, { create: true });
+      let { file, raw } = await this.openFile(folder);
+      const disk = raw ? this.decodeSnapshot(raw) : null;
+      let browser = await this.browserSnapshot();
+      let baseline = await this.fingerprint(browser.data);
+      const working = sameActive ? this.active : browser;
+      let selected = disk != null ? disk : working;
+      if (disk && (!this.preferDirectory || sameActive && this.active.paused) && this.serialize(disk.data) !== this.serialize(working.data)) {
+        const hasBrowserData = working.updatedAt || this.hasData(working.data);
+        const accepted = !interactive && sameRoot && saved.baseline === baseline;
+        if (hasBrowserData && !accepted) {
+          const choice = await this.choose(working.updatedAt, disk.updatedAt);
+          if (choice === "cancel")
+            return;
+          if (choice === "browser") {
+            browser = await this.browserSnapshot();
+            baseline = await this.fingerprint(browser.data);
+            selected = sameActive ? this.active : browser;
+          }
+        }
+      }
+      if (!disk || selected !== disk) {
+        if (!disk)
+          await ((_a = this.initializeDirectory) == null ? void 0 : _a.call(this, folder));
+        selected = { data: selected.data, updatedAt: (_b = selected.updatedAt) != null ? _b : (/* @__PURE__ */ new Date()).toISOString() };
+        raw = await this.write(file, selected, raw);
+      }
+      await this.catalog({ root, baseline });
+      this.active = { ...selected, root, folder, file, raw };
+      this.showStatus(root.name, `${root.name} / ${this.folder} / ${this.filename}`);
+      (_c = this.onLoad) == null ? void 0 : _c.call(this, selected.data, interactive);
+    }
+    async openFile(folder) {
+      try {
+        const file = await folder.getFileHandle(this.filename);
+        return { file, raw: await (await file.getFile()).text() };
+      } catch (error) {
+        if (error.name !== "NotFoundError")
+          throw error;
+        const file = await folder.getFileHandle(this.filename, { create: true });
+        return { file, raw: await (await file.getFile()).text() };
+      }
+    }
+    decodeSnapshot(raw) {
+      const value = JSON.parse(raw);
+      if ((value == null ? void 0 : value.version) === 1 && "data" in value) {
+        if (value.updatedAt !== null && Number.isNaN(Date.parse(value.updatedAt))) {
+          throw new Error("\u6570\u636E\u66F4\u65B0\u65F6\u95F4\u65E0\u6548");
+        }
+        return { data: this.decode(value.data), updatedAt: value.updatedAt };
+      }
+      return { data: this.decode(value), updatedAt: null };
+    }
+    async write(file, snapshot, expected) {
+      const stream = await file.createWritable({ mode: "exclusive" });
+      try {
+        if (await (await file.getFile()).text() !== expected) {
+          throw new DOMException("\u76EE\u5F55\u6570\u636E\u5DF2\u66F4\u65B0", "InvalidModificationError");
+        }
+        const raw = JSON.stringify({ version: 1, updatedAt: snapshot.updatedAt, data: snapshot.data }, null, 2);
+        await stream.write(raw);
+        await stream.close();
+        return raw;
+      } catch (error) {
+        await stream.abort().catch(() => {
+        });
+        throw error;
+      }
+    }
+    changed() {
+      const active = this.active;
+      active.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      if (active.paused || active.pending)
+        return;
+      active.pending = true;
+      this.queue = this.queue.then(async () => {
+        var _a, _b;
+        active.pending = false;
+        if (this.active !== active || active.paused)
+          return;
+        try {
+          active.raw = await this.write(active.file, active, active.raw);
+          this.showStatus(active.root.name);
+        } catch (error) {
+          if (error.name !== "InvalidModificationError")
+            throw error;
+          active.paused = true;
+          const raw = await (await active.file.getFile()).text();
+          const disk = this.decodeSnapshot(raw);
+          const choice = await this.choose(active.updatedAt, disk.updatedAt);
+          if (choice === "browser") {
+            const savingTime = active.updatedAt;
+            active.raw = await this.write(active.file, active, raw);
+            active.paused = false;
+            this.showStatus(active.root.name);
+            if (active.updatedAt !== savingTime)
+              this.changed();
+          } else if (choice === "directory") {
+            await ((_a = this.beforeConnect) == null ? void 0 : _a.call(this));
+            this.active = { ...active, ...disk, raw, paused: false, pending: false };
+            this.showStatus(active.root.name);
+            (_b = this.onLoad) == null ? void 0 : _b.call(this, disk.data, true);
+          } else {
+            this.showStatus("\u540C\u6B65\u5DF2\u6682\u505C", "\u91CD\u65B0\u9009\u62E9\u76EE\u5F55\u53EF\u7EE7\u7EED\u5904\u7406\u51B2\u7A81");
+          }
+        }
+      }).catch((error) => this.showStatus("\u4FDD\u5B58\u5931\u8D25", error.message));
+    }
+    async choose(browserTime, fileTime) {
+      if (!document.body) {
+        await new Promise((resolve) => document.addEventListener("DOMContentLoaded", resolve, { once: true }));
+      }
+      const format = (value) => value ? new Date(value).toLocaleString() : "\u6682\u65E0\u8BB0\u5F55";
+      const host = document.createElement("div");
+      const shadow = host.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
+      style.textContent = `
+            dialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box;
+                width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
+                overflow: auto; padding: 22px; border: 1px solid #806737; border-radius: 16px;
+                background: #252322; color: #f8f5ef; box-shadow: 0 18px 60px #0009;
+                font: 14px/1.5 system-ui, sans-serif; text-align: start; }
+            dialog::backdrop { background: rgba(0,0,0,.62); }
+            header { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; }
+            .warning { display: grid; place-items: center; width: 30px; height: 30px; flex: none;
+                border-radius: 50%; color: #2d220c; background: #ffcf5a; font-weight: 800; }
+            .description { margin: 9px 0 14px; color: #d6cfc3; }
+            dl { display: grid; gap: 8px; margin: 0 0 16px; }
+            dl div { display: flex; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap;
+                padding: 8px 10px; border: 1px solid #49443c; border-radius: 8px; }
+            dt { color: #d6cfc3; }
+            dd { margin: 0; font-variant-numeric: tabular-nums; }
+            form { display: flex; gap: 8px; flex-wrap: wrap; }
+            button { flex: 1 0 auto; border: 1px solid #806737; border-radius: 8px; padding: 7px 10px;
+                background: #413621; color: #fff4da; font: inherit; cursor: pointer; }
+            button:hover { background: #564627; }
+            button[value="cancel"] { flex: 0 0 auto; background: transparent; border-color: #665e51; color: #e2dbd0; }
+            button:focus-visible { outline: 2px solid #ffcf5a; outline-offset: 2px; }
+        `;
+      const dialog = document.createElement("dialog");
+      dialog.setAttribute("aria-label", "\u6570\u636E\u540C\u6B65\u51B2\u7A81");
+      const heading = document.createElement("header");
+      const icon = document.createElement("span");
+      icon.className = "warning";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = "!";
+      heading.append(icon, "\u6570\u636E\u540C\u6B65\u51B2\u7A81");
+      const description = document.createElement("p");
+      description.className = "description";
+      description.textContent = "\u4E24\u4EFD\u6570\u636E\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u9009\u62E9\u8981\u4FDD\u7559\u7684\u4E00\u4EFD\u3002";
+      const info = document.createElement("dl");
+      for (const [label, time] of [["\u6D4F\u89C8\u5668\u7F13\u5B58\u6700\u8FD1\u66F4\u65B0", browserTime], ["\u76EE\u5F55\u6570\u636E\u6700\u8FD1\u66F4\u65B0", fileTime]]) {
+        const row = document.createElement("div");
+        const term = document.createElement("dt");
+        const value = document.createElement("dd");
+        term.textContent = label;
+        value.textContent = format(time);
+        row.append(term, value);
+        info.append(row);
+      }
+      const form = document.createElement("form");
+      form.method = "dialog";
+      for (const [value, text] of [["browser", "\u4FDD\u7559\u6D4F\u89C8\u5668\u7F13\u5B58"], ["directory", "\u4FDD\u7559\u76EE\u5F55\u6570\u636E"], ["cancel", "\u53D6\u6D88"]]) {
+        const button = document.createElement("button");
+        button.type = "submit";
+        button.value = value;
+        button.textContent = text;
+        button.autofocus = value === "cancel";
+        form.append(button);
+      }
+      dialog.append(heading, description, info, form);
+      shadow.append(style, dialog);
+      document.body.append(host);
+      return new Promise((resolve) => {
+        dialog.addEventListener("close", () => {
+          resolve(dialog.returnValue || "cancel");
+          host.remove();
+        }, { once: true });
+        dialog.showModal();
+      });
+    }
+    createControls() {
+      var _a;
+      const {
+        background = "#23272e",
+        border = "#363c46",
+        titleColor = "#f4f4f4",
+        mutedColor = "#b9c1cb",
+        buttonBackground = "#363c46",
+        buttonBorder = "transparent",
+        helpBorder = "#596472",
+        radius = "10px"
+      } = (_a = this.controlTheme) != null ? _a : {};
+      const section = document.createElement("section");
+      section.style.cssText = `min-width:0;background:${background};color:${titleColor};border:1px solid ${border};border-radius:${radius};padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.7;`;
+      const heading = document.createElement("div");
+      heading.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:8px";
+      const title = document.createElement("strong");
+      title.textContent = "\u6570\u636E\u7F13\u5B58\u76EE\u5F55";
+      const help = document.createElement("button");
+      help.type = "button";
+      help.textContent = "?";
+      help.setAttribute("aria-label", "\u67E5\u770B\u6570\u636E\u7F13\u5B58\u76EE\u5F55\u8BF4\u660E");
+      help.setAttribute("aria-haspopup", "dialog");
+      help.style.cssText = `width:18px;height:18px;border:1px solid ${helpBorder};border-radius:50%;color:${mutedColor};background:transparent;cursor:pointer;padding:0;font:inherit;line-height:16px`;
+      help.addEventListener("click", () => this.showDirectoryHelp());
+      const actions = document.createElement("div");
+      actions.style.cssText = "display:flex;align-items:center;gap:6px";
+      const select = document.createElement("button");
+      select.type = "button";
+      select.textContent = "\u9009\u62E9\u76EE\u5F55";
+      select.disabled = !this.supported;
+      select.style.cssText = `flex:none;padding:4px 10px;border:1px solid ${buttonBorder};border-radius:6px;color:inherit;background:${buttonBackground};cursor:pointer;font:inherit`;
+      const status = document.createElement("span");
+      status.setAttribute("role", "status");
+      status.style.cssText = `min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${mutedColor}`;
+      const render = () => {
+        var _a2;
+        if (!section.isConnected && section.dataset.mounted)
+          this.listeners.delete(render);
+        status.textContent = this.status;
+        status.title = (_a2 = this.detail) != null ? _a2 : this.status;
+      };
+      this.listeners.add(render);
+      render();
+      queueMicrotask(() => {
+        section.dataset.mounted = "true";
+      });
+      select.addEventListener("click", async () => {
+        select.disabled = true;
+        try {
+          await this.select();
+        } catch (error) {
+          if (error.name !== "AbortError")
+            this.showStatus("\u76EE\u5F55\u64CD\u4F5C\u5931\u8D25", error.message);
+        } finally {
+          select.disabled = false;
+        }
+      });
+      heading.append(title, help);
+      actions.append(select, status);
+      section.append(heading, actions);
+      return section;
+    }
+    showDirectoryHelp() {
+      var _a, _b;
+      const dialog = document.createElement("dialog");
+      dialog.setAttribute("aria-label", "\u6570\u636E\u7F13\u5B58\u76EE\u5F55\u8BF4\u660E");
+      const background = (_b = (_a = this.controlTheme) == null ? void 0 : _a.helpBackground) != null ? _b : "#23272e";
+      dialog.style.cssText = `box-sizing:border-box;width:min(400px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;padding:16px;border:1px solid rgba(255,255,255,.18);border-radius:12px;background:${background};color:#f4f4f4;box-shadow:0 12px 36px #0007;font:13px/1.6 system-ui;`;
+      const header = document.createElement("div");
+      header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px";
+      const title = document.createElement("strong");
+      title.style.fontSize = "15px";
+      title.textContent = "\u6570\u636E\u7F13\u5B58\u76EE\u5F55";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.textContent = "\u5173\u95ED";
+      close.style.cssText = "border:1px solid rgba(255,255,255,.2);border-radius:6px;background:rgba(255,255,255,.08);color:inherit;padding:3px 9px;cursor:pointer;font:inherit";
+      close.addEventListener("click", () => dialog.close());
+      header.append(title, close);
+      dialog.append(header);
+      const sections = [
+        ["\u6D4F\u89C8\u5668\u5982\u4F55\u8BFB\u5199", `\u811A\u672C\u901A\u8FC7\u6D4F\u89C8\u5668\u7684 File System Access API \u8BF7\u6C42\u76EE\u5F55\u8BFB\u5199\u6743\u9650\u3002\u9009\u4E2D\u76EE\u5F55\u540E\uFF0C\u4F1A\u5728\u91CC\u9762\u521B\u5EFA\u300C${this.folder}\u300D\u5B50\u6587\u4EF6\u5939\u5E76\u4FDD\u5B58\u6570\u636E\u3002\u672A\u9009\u76EE\u5F55\u65F6\u4F7F\u7528\u6D4F\u89C8\u5668\u7F13\u5B58\uFF0C\u6362\u6D4F\u89C8\u5668\u6216\u7528\u65E0\u75D5\u7A97\u53E3\u65F6\u53EF\u91CD\u65B0\u9009\u62E9\u76EE\u5F55\u3002`],
+        ["\u4FDD\u5B58\u8303\u56F4", this.features],
+        ["\u63A8\u8350\u5B9E\u8DF5", "\u63A8\u8350\u4F7F\u7528 OneDrive \u7B49\u4E91\u540C\u6B65\u672C\u5730\u6587\u4EF6\u5939\uFF0C\u5373\u53EF\u5B9E\u73B0\u914D\u7F6E\u5728\u591A\u8BBE\u5907\u7684\u81EA\u52A8\u4E91\u540C\u6B65"]
+      ];
+      for (const [heading, text] of sections) {
+        const section = document.createElement("section");
+        section.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1)";
+        const label = document.createElement("strong");
+        label.textContent = heading;
+        const description = document.createElement("p");
+        description.style.cssText = "margin:4px 0 0;color:rgba(255,255,255,.74);font:inherit";
+        description.textContent = text;
+        section.append(label, description);
+        dialog.append(section);
+      }
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      document.body.append(dialog);
+      dialog.showModal();
+    }
+  };
+
+  // src/stats/StatsStore.js
+  var STAT_FIELDS = [
+    "videoCount",
+    "watchTimeSec",
+    "skipLiveCount",
+    "skipAdCount",
+    "blockKeywordCount",
+    "aiLikeCount",
+    "speedSkipCount"
+  ];
+  var SESSION_FOLDER = "\u6BCF\u65E5\u7EDF\u8BA1";
+  var SESSION_FILENAME = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.json$/;
+  var SESSION_HANDOFF_KEY = "douyin-enhancer-stats-session-handoff";
+  var StatsStore = class {
+    constructor(options = {}) {
+      this.dbName = options.dbName || "douyin-enhancer-stats";
+      this.storeName = options.storeName || "dailyStats";
+      this.version = options.version || 1;
+      this.directory = options.directory;
+      this.db = null;
+      this.sessionRecords = /* @__PURE__ */ new Map();
+      this.trackingBaselines = /* @__PURE__ */ new Map();
+    }
+    async open() {
+      var _a;
+      if ((_a = this.directory) == null ? void 0 : _a.active) {
+        await this.resumeInitialSession();
+        return;
+      }
+      if (this.db)
+        return this.db;
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(this.dbName, this.version);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(this.storeName)) {
+            db.createObjectStore(this.storeName, { keyPath: "date" });
+          }
+        };
+        request.onsuccess = () => {
+          this.db = request.result;
+          resolve(this.db);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async get(date) {
+      var _a, _b;
+      if ((_a = this.directory) == null ? void 0 : _a.active) {
+        return (_b = (await this.getAll()).find((item) => item.date === date)) != null ? _b : null;
+      }
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly");
+        const store = tx.objectStore(this.storeName);
+        const request = store.get(date);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async getForTracking(date) {
+      var _a;
+      const record = await this.get(date);
+      if ((_a = this.directory) == null ? void 0 : _a.active) {
+        const own = this.sessionRecords.get(date);
+        this.trackingBaselines.set(date, Object.fromEntries(
+          STAT_FIELDS.map((field) => {
+            var _a2, _b;
+            return [field, ((_a2 = record == null ? void 0 : record[field]) != null ? _a2 : 0) - ((_b = own == null ? void 0 : own[field]) != null ? _b : 0)];
+          })
+        ));
+      }
+      return record;
+    }
+    async put(record) {
+      var _a;
+      if ((_a = this.directory) == null ? void 0 : _a.active) {
+        await this.putSessionRecord(record);
+        return record;
+      }
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readwrite");
+        const store = tx.objectStore(this.storeName);
+        store.put(record);
+        tx.oncomplete = () => {
+          var _a2;
+          (_a2 = this.directory) == null ? void 0 : _a2.markBrowserChanged();
+          resolve(record);
+        };
+        tx.onabort = () => reject(tx.error);
+      });
+    }
+    async getAll() {
+      var _a;
+      if ((_a = this.directory) == null ? void 0 : _a.active)
+        return this.readDirectoryStats();
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly");
+        const store = tx.objectStore(this.storeName);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    async initializeDirectory(root) {
+      const folder = await root.getDirectoryHandle(SESSION_FOLDER, { create: true });
+      for await (const handle of folder.values()) {
+        if (handle.kind === "file" && SESSION_FILENAME.test(handle.name) && (await handle.getFile()).size) {
+          return;
+        }
+      }
+      const records = await this.getAll();
+      if (!records.length)
+        return;
+      const id = crypto.randomUUID();
+      const file = await folder.getFileHandle(`${id}.json`, { create: true });
+      await this.writeSession(file, id, records);
+      sessionStorage.setItem(SESSION_HANDOFF_KEY, id);
+    }
+    async resumeInitialSession() {
+      const id = sessionStorage.getItem(SESSION_HANDOFF_KEY);
+      if (!id)
+        return;
+      const folder = await this.directory.active.folder.getDirectoryHandle(SESSION_FOLDER);
+      const file = await folder.getFileHandle(`${id}.json`);
+      const records = await this.readSession(file);
+      this.sessionFile = file;
+      this.sessionId = id;
+      this.sessionRecords = new Map(records.map((record) => [record.date, record]));
+      sessionStorage.removeItem(SESSION_HANDOFF_KEY);
+    }
+    async putSessionRecord(record) {
+      var _a;
+      const baseline = this.trackingBaselines.get(record.date);
+      const delta = { date: record.date };
+      for (const field of STAT_FIELDS) {
+        delta[field] = ((_a = record[field]) != null ? _a : 0) - baseline[field];
+      }
+      const records = new Map(this.sessionRecords);
+      records.set(record.date, delta);
+      if (!this.sessionFile) {
+        const folder = await this.directory.active.folder.getDirectoryHandle(SESSION_FOLDER, { create: true });
+        this.sessionId = crypto.randomUUID();
+        this.sessionFile = await folder.getFileHandle(`${this.sessionId}.json`, { create: true });
+      }
+      await this.writeSession(this.sessionFile, this.sessionId, Array.from(records.values()));
+      this.sessionRecords = records;
+    }
+    async writeSession(file, id, records) {
+      const stream = await file.createWritable({ mode: "exclusive" });
+      try {
+        await stream.write(JSON.stringify({ version: 1, id, records }));
+        await stream.close();
+      } catch (error) {
+        await stream.abort().catch(() => {
+        });
+        throw error;
+      }
+    }
+    async readSession(handle) {
+      const raw = await (await handle.getFile()).text();
+      if (!raw)
+        return [];
+      const session = JSON.parse(raw);
+      if (session.version !== 1 || `${session.id}.json` !== handle.name || !Array.isArray(session.records)) {
+        throw new Error(`\u7EDF\u8BA1\u4F1A\u8BDD\u6587\u4EF6\u683C\u5F0F\u65E0\u6548\uFF1A${handle.name}`);
+      }
+      return session.records;
+    }
+    async readDirectoryStats() {
+      const active = this.directory.active;
+      const totals = /* @__PURE__ */ new Map();
+      const add = (record) => {
+        var _a, _b, _c;
+        const total = (_a = totals.get(record.date)) != null ? _a : { date: record.date };
+        for (const field of STAT_FIELDS) {
+          total[field] = ((_b = total[field]) != null ? _b : 0) + ((_c = record[field]) != null ? _c : 0);
+        }
+        totals.set(record.date, total);
+      };
+      let folder;
+      try {
+        folder = await active.folder.getDirectoryHandle(SESSION_FOLDER);
+      } catch (error) {
+        if (error.name !== "NotFoundError")
+          throw error;
+      }
+      if (folder) {
+        const handles = [];
+        for await (const handle of folder.values()) {
+          if (handle.kind === "file" && SESSION_FILENAME.test(handle.name))
+            handles.push(handle);
+        }
+        for (let index = 0; index < handles.length; index += 32) {
+          const batch = handles.slice(index, index + 32);
+          const sessions = await Promise.all(batch.map((handle) => this.readSession(handle)));
+          sessions.forEach((records) => records.forEach(add));
+        }
+      }
+      return Array.from(totals.values()).sort((a, b) => a.date.localeCompare(b.date));
+    }
+    async getRange(startDate, endDate) {
+      var _a;
+      if ((_a = this.directory) == null ? void 0 : _a.active) {
+        return (await this.getAll()).filter((item) => item.date >= startDate && item.date <= endDate);
+      }
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, "readonly");
+        const store = tx.objectStore(this.storeName);
+        const range = IDBKeyRange.bound(startDate, endDate);
+        const request = store.getAll(range);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      });
+    }
+  };
+
+  // src/core/ScriptData.js
+  var LIVE_DEFAULTS_KEY = "douyin-enhancer-live-defaults";
+  var settingsKeys = /* @__PURE__ */ new Set([
+    "douyin_ai_content",
+    "douyin_ai_model",
+    "douyin_ai_provider",
+    "douyin_auto_clean_screen_enabled",
+    "douyin_auto_like_enabled",
+    "douyin_block_ai_contained_enabled",
+    "douyin_block_ai_declared_enabled",
+    "douyin_block_ai_generated_enabled",
+    "douyin_block_desc_enabled",
+    "douyin_block_fictional_enabled",
+    "douyin_block_name_enabled",
+    "douyin_block_personal_opinion_enabled",
+    "douyin_block_tags_enabled",
+    "douyin_blocked_keyword_scopes",
+    "douyin_blocked_keywords",
+    "douyin_default_toggle_states",
+    "douyin_press_r_enabled",
+    "douyin_speed_mode_max_seconds",
+    "douyin_speed_mode_min_seconds",
+    "douyin_speed_mode_seconds",
+    "douyin_speed_mode_type",
+    "douyin_target_resolution",
+    "douyin_zhipu_api_key",
+    "douyin_zhipu_model",
+    LIVE_DEFAULTS_KEY
+  ]);
+  var browserStats = new StatsStore();
+  function normalizeSettings(settings) {
+    if (!settings || Array.isArray(settings) || typeof settings !== "object" || Object.entries(settings).some(([key, value]) => !settingsKeys.has(key) || typeof value !== "string")) {
+      throw new Error("\u811A\u672C\u6570\u636E\u6587\u4EF6\u683C\u5F0F\u65E0\u6548");
+    }
+    return settings;
+  }
+  var scriptData = new DirectoryDataStore({
+    dbName: "douyin-enhancer-directory",
+    folder: "\u7F51\u9875\u6296\u97F3\u4F53\u9A8C\u589E\u5F3A",
+    filename: "\u811A\u672C\u8BBE\u7F6E.json",
+    preferDirectory: true,
+    features: "\u9ED8\u8BA4\u6309\u94AE\u4E0E\u81EA\u52A8\u884C\u4E3A\u3001\u5185\u5BB9\u5C4F\u853D\u3001AI \u559C\u597D\u3001\u5206\u8FA8\u7387\u7B5B\u9009\u3001\u6781\u901F\u6A21\u5F0F\u3001\u76F4\u64AD\u51C0\u5316\u548C\u6BCF\u65E5\u7EDF\u8BA1",
+    controlTheme: {
+      background: "rgba(255,255,255,0.05)",
+      border: "rgba(255,255,255,0.10)",
+      titleColor: "rgba(255,255,255,0.92)",
+      mutedColor: "rgba(255,255,255,0.62)",
+      buttonBackground: "rgba(255,255,255,0.08)",
+      buttonBorder: "rgba(255,255,255,0.20)",
+      helpBorder: "rgba(255,255,255,0.24)",
+      helpBackground: "#171717",
+      radius: "8px"
+    },
+    decode: normalizeSettings,
+    hasData: (settings) => Object.keys(settings).length,
+    readBrowser() {
+      const settings = {};
+      for (const key of settingsKeys) {
+        const value = localStorage.getItem(key);
+        if (value !== null)
+          settings[key] = value;
+      }
+      return settings;
+    },
+    onLoad(data, interactive) {
+      if (interactive)
+        window.location.reload();
+    }
+  });
+  scriptData.initializeDirectory = (folder) => browserStats.initializeDirectory(folder);
+  var settingsStorage = {
+    getItem(key) {
+      var _a;
+      if (scriptData.active)
+        return (_a = scriptData.active.data[key]) != null ? _a : null;
+      return localStorage.getItem(key);
+    },
+    setItem(key, value) {
+      if (this.getItem(key) === value)
+        return;
+      if (scriptData.active) {
+        scriptData.active.data[key] = value;
+        scriptData.changed();
+      } else {
+        localStorage.setItem(key, value);
+        scriptData.markBrowserChanged();
+      }
+    }
+  };
+
   // src/core/NotificationManager.js
   var NotificationManager = class {
     constructor() {
@@ -145,7 +829,7 @@
     loadDefaultButtonStates() {
       let savedStates = {};
       try {
-        savedStates = JSON.parse(localStorage.getItem("douyin_default_toggle_states") || "{}");
+        savedStates = JSON.parse(settingsStorage.getItem("douyin_default_toggle_states") || "{}");
       } catch (error) {
         savedStates = {};
       }
@@ -228,7 +912,7 @@
     loadKeywords() {
       let savedKeywords = [];
       try {
-        savedKeywords = JSON.parse(localStorage.getItem("douyin_blocked_keywords") || '["\u5E97", "\u7504\u9009"]');
+        savedKeywords = JSON.parse(settingsStorage.getItem("douyin_blocked_keywords") || '["\u5E97", "\u7504\u9009"]');
       } catch (error) {
         savedKeywords = [];
       }
@@ -237,7 +921,7 @@
     loadKeywordScopes() {
       let savedScopes = {};
       try {
-        savedScopes = JSON.parse(localStorage.getItem("douyin_blocked_keyword_scopes") || "{}");
+        savedScopes = JSON.parse(settingsStorage.getItem("douyin_blocked_keyword_scopes") || "{}");
       } catch (error) {
         savedScopes = {};
       }
@@ -259,56 +943,56 @@
       return this.getKeywordScopes(keyword)[scope] !== false;
     }
     loadAutoCleanScreenSetting() {
-      return localStorage.getItem("douyin_auto_clean_screen_enabled") === "true";
+      return settingsStorage.getItem("douyin_auto_clean_screen_enabled") === "true";
     }
     loadSpeedSeconds() {
-      const value = parseInt(localStorage.getItem("douyin_speed_mode_seconds") || "6", 10);
+      const value = parseInt(settingsStorage.getItem("douyin_speed_mode_seconds") || "6", 10);
       return Number.isFinite(value) ? Math.min(Math.max(value, 1), 3600) : 6;
     }
     loadSpeedModeType() {
-      const mode = localStorage.getItem("douyin_speed_mode_type") || "fixed";
+      const mode = settingsStorage.getItem("douyin_speed_mode_type") || "fixed";
       return mode === "random" ? "random" : "fixed";
     }
     loadSpeedMinSeconds() {
-      const value = parseInt(localStorage.getItem("douyin_speed_mode_min_seconds") || "5", 10);
+      const value = parseInt(settingsStorage.getItem("douyin_speed_mode_min_seconds") || "5", 10);
       return Number.isFinite(value) ? Math.min(Math.max(value, 1), 3600) : 5;
     }
     loadSpeedMaxSeconds() {
-      const value = parseInt(localStorage.getItem("douyin_speed_mode_max_seconds") || "10", 10);
+      const value = parseInt(settingsStorage.getItem("douyin_speed_mode_max_seconds") || "10", 10);
       return Number.isFinite(value) ? Math.min(Math.max(value, 1), 3600) : 10;
     }
     loadAiContent() {
-      return localStorage.getItem("douyin_ai_content") || "\u9732\u8138\u7684\u7F8E\u5973";
+      return settingsStorage.getItem("douyin_ai_content") || "\u9732\u8138\u7684\u7F8E\u5973";
     }
     loadAiProvider() {
-      return localStorage.getItem("douyin_ai_provider") || "ollama";
+      return settingsStorage.getItem("douyin_ai_provider") || "ollama";
     }
     loadAiModel() {
-      return localStorage.getItem("douyin_ai_model") || "qwen3-vl:4b";
+      return settingsStorage.getItem("douyin_ai_model") || "qwen3-vl:4b";
     }
     loadZhipuApiKey() {
-      return localStorage.getItem("douyin_zhipu_api_key") || "";
+      return settingsStorage.getItem("douyin_zhipu_api_key") || "";
     }
     loadZhipuModel() {
-      return localStorage.getItem("douyin_zhipu_model") || "glm-4.6v-flash";
+      return settingsStorage.getItem("douyin_zhipu_model") || "glm-4.6v-flash";
     }
     loadTargetResolution() {
-      return localStorage.getItem("douyin_target_resolution") || "4K";
+      return settingsStorage.getItem("douyin_target_resolution") || "4K";
     }
     loadPressRSetting() {
-      return localStorage.getItem("douyin_press_r_enabled") !== "false";
+      return settingsStorage.getItem("douyin_press_r_enabled") !== "false";
     }
     loadAutoLikeSetting() {
-      return localStorage.getItem("douyin_auto_like_enabled") !== "false";
+      return settingsStorage.getItem("douyin_auto_like_enabled") !== "false";
     }
     loadBlockNameSetting() {
-      return localStorage.getItem("douyin_block_name_enabled") !== "false";
+      return settingsStorage.getItem("douyin_block_name_enabled") !== "false";
     }
     loadBlockDescSetting() {
-      return localStorage.getItem("douyin_block_desc_enabled") !== "false";
+      return settingsStorage.getItem("douyin_block_desc_enabled") !== "false";
     }
     loadBlockTagsSetting() {
-      return localStorage.getItem("douyin_block_tags_enabled") !== "false";
+      return settingsStorage.getItem("douyin_block_tags_enabled") !== "false";
     }
     saveKeywords(keywords, scopes = {}) {
       const normalizedKeywords = [...new Set(keywords.filter((keyword) => typeof keyword === "string").map((keyword) => keyword.trim()).filter((keyword) => keyword.length > 0))];
@@ -318,112 +1002,112 @@
       }, {});
       this.config.blockKeywords.keywords = normalizedKeywords;
       this.config.blockKeywords.keywordScopes = normalizedScopes;
-      localStorage.setItem("douyin_blocked_keywords", JSON.stringify(normalizedKeywords));
-      localStorage.setItem("douyin_blocked_keyword_scopes", JSON.stringify(normalizedScopes));
+      settingsStorage.setItem("douyin_blocked_keywords", JSON.stringify(normalizedKeywords));
+      settingsStorage.setItem("douyin_blocked_keyword_scopes", JSON.stringify(normalizedScopes));
     }
     saveAutoCleanScreenSetting(enabled) {
       this.config.autoCleanScreen.enabled = enabled;
-      localStorage.setItem("douyin_auto_clean_screen_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_auto_clean_screen_enabled", enabled.toString());
     }
     saveSpeedSeconds(seconds) {
       this.config.speedMode.seconds = seconds;
-      localStorage.setItem("douyin_speed_mode_seconds", seconds.toString());
+      settingsStorage.setItem("douyin_speed_mode_seconds", seconds.toString());
     }
     saveSpeedModeType(mode) {
       this.config.speedMode.mode = mode;
-      localStorage.setItem("douyin_speed_mode_type", mode);
+      settingsStorage.setItem("douyin_speed_mode_type", mode);
     }
     saveSpeedModeRange(minSeconds, maxSeconds) {
       this.config.speedMode.minSeconds = minSeconds;
       this.config.speedMode.maxSeconds = maxSeconds;
-      localStorage.setItem("douyin_speed_mode_min_seconds", minSeconds.toString());
-      localStorage.setItem("douyin_speed_mode_max_seconds", maxSeconds.toString());
+      settingsStorage.setItem("douyin_speed_mode_min_seconds", minSeconds.toString());
+      settingsStorage.setItem("douyin_speed_mode_max_seconds", maxSeconds.toString());
     }
     saveAiContent(content) {
       this.config.aiPreference.content = content;
-      localStorage.setItem("douyin_ai_content", content);
+      settingsStorage.setItem("douyin_ai_content", content);
     }
     saveAiProvider(provider) {
       this.config.aiPreference.provider = provider;
-      localStorage.setItem("douyin_ai_provider", provider);
+      settingsStorage.setItem("douyin_ai_provider", provider);
     }
     saveAiModel(model) {
       this.config.aiPreference.model = model;
-      localStorage.setItem("douyin_ai_model", model);
+      settingsStorage.setItem("douyin_ai_model", model);
     }
     saveZhipuApiKey(apiKey) {
       this.config.aiPreference.zhipuApiKey = apiKey;
-      localStorage.setItem("douyin_zhipu_api_key", apiKey);
+      settingsStorage.setItem("douyin_zhipu_api_key", apiKey);
     }
     saveZhipuModel(model) {
       this.config.aiPreference.zhipuModel = model;
-      localStorage.setItem("douyin_zhipu_model", model);
+      settingsStorage.setItem("douyin_zhipu_model", model);
     }
     saveTargetResolution(resolution) {
       this.config.onlyResolution.resolution = resolution;
-      localStorage.setItem("douyin_target_resolution", resolution);
+      settingsStorage.setItem("douyin_target_resolution", resolution);
     }
     savePressRSetting(enabled) {
       this.config.blockKeywords.pressR = enabled;
-      localStorage.setItem("douyin_press_r_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_press_r_enabled", enabled.toString());
     }
     saveAutoLikeSetting(enabled) {
       this.config.aiPreference.autoLike = enabled;
-      localStorage.setItem("douyin_auto_like_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_auto_like_enabled", enabled.toString());
     }
     saveBlockNameSetting(enabled) {
       this.config.blockKeywords.blockName = enabled;
-      localStorage.setItem("douyin_block_name_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_name_enabled", enabled.toString());
     }
     saveBlockDescSetting(enabled) {
       this.config.blockKeywords.blockDesc = enabled;
-      localStorage.setItem("douyin_block_desc_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_desc_enabled", enabled.toString());
     }
     saveBlockTagsSetting(enabled) {
       this.config.blockKeywords.blockTags = enabled;
-      localStorage.setItem("douyin_block_tags_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_tags_enabled", enabled.toString());
     }
     loadBlockAIGeneratedSetting() {
-      return localStorage.getItem("douyin_block_ai_generated_enabled") === "true";
+      return settingsStorage.getItem("douyin_block_ai_generated_enabled") === "true";
     }
     saveBlockAIGeneratedSetting(enabled) {
       this.config.blockKeywords.blockAIGenerated = enabled;
-      localStorage.setItem("douyin_block_ai_generated_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_ai_generated_enabled", enabled.toString());
     }
     loadBlockAIContainedSetting() {
-      return localStorage.getItem("douyin_block_ai_contained_enabled") === "true";
+      return settingsStorage.getItem("douyin_block_ai_contained_enabled") === "true";
     }
     saveBlockAIContainedSetting(enabled) {
       this.config.blockKeywords.blockAIContained = enabled;
-      localStorage.setItem("douyin_block_ai_contained_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_ai_contained_enabled", enabled.toString());
     }
     loadBlockAIDeclaredSetting() {
-      return localStorage.getItem("douyin_block_ai_declared_enabled") === "true";
+      return settingsStorage.getItem("douyin_block_ai_declared_enabled") === "true";
     }
     saveBlockAIDeclaredSetting(enabled) {
       this.config.blockKeywords.blockAIDeclared = enabled;
-      localStorage.setItem("douyin_block_ai_declared_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_ai_declared_enabled", enabled.toString());
     }
     loadBlockPersonalOpinionSetting() {
-      return localStorage.getItem("douyin_block_personal_opinion_enabled") === "true";
+      return settingsStorage.getItem("douyin_block_personal_opinion_enabled") === "true";
     }
     saveBlockPersonalOpinionSetting(enabled) {
       this.config.blockKeywords.blockPersonalOpinion = enabled;
-      localStorage.setItem("douyin_block_personal_opinion_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_personal_opinion_enabled", enabled.toString());
     }
     loadBlockFictionalSetting() {
-      return localStorage.getItem("douyin_block_fictional_enabled") === "true";
+      return settingsStorage.getItem("douyin_block_fictional_enabled") === "true";
     }
     saveBlockFictionalSetting(enabled) {
       this.config.blockKeywords.blockFictional = enabled;
-      localStorage.setItem("douyin_block_fictional_enabled", enabled.toString());
+      settingsStorage.setItem("douyin_block_fictional_enabled", enabled.toString());
     }
     saveDefaultEnabledState(key, enabled) {
       if (!this.isToggleButtonStateKey(key)) {
         return;
       }
       this.defaultButtonStates[key] = enabled ? "enabled" : "disabled";
-      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultButtonStates));
+      settingsStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultButtonStates));
     }
     saveDefaultEnabledStates(states) {
       Object.keys(states).forEach((key) => {
@@ -431,7 +1115,7 @@
           this.defaultButtonStates[key] = this.normalizeDefaultButtonState(key, states[key]);
         }
       });
-      localStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultButtonStates));
+      settingsStorage.setItem("douyin_default_toggle_states", JSON.stringify(this.defaultButtonStates));
     }
     applyButtonStatesToCurrentSession(states) {
       Object.keys(states).forEach((key) => {
@@ -621,98 +1305,7 @@
     }
   };
 
-  // src/stats/StatsStore.js
-  var StatsStore = class {
-    constructor(options = {}) {
-      this.dbName = options.dbName || "douyin-enhancer-stats";
-      this.storeName = options.storeName || "dailyStats";
-      this.version = options.version || 1;
-      this.db = null;
-    }
-    async open() {
-      if (this.db)
-        return this.db;
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(this.dbName, this.version);
-        request.onupgradeneeded = () => {
-          const db = request.result;
-          if (!db.objectStoreNames.contains(this.storeName)) {
-            db.createObjectStore(this.storeName, { keyPath: "date" });
-          }
-        };
-        request.onsuccess = () => {
-          this.db = request.result;
-          resolve(this.db);
-        };
-        request.onerror = () => reject(request.error);
-      });
-    }
-    async get(date) {
-      const db = await this.open();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(this.storeName, "readonly");
-        const store = tx.objectStore(this.storeName);
-        const request = store.get(date);
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      });
-    }
-    async put(record) {
-      const db = await this.open();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(this.storeName, "readwrite");
-        const store = tx.objectStore(this.storeName);
-        const request = store.put(record);
-        request.onsuccess = () => resolve(record);
-        request.onerror = () => reject(request.error);
-      });
-    }
-    async getAll() {
-      const db = await this.open();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(this.storeName, "readonly");
-        const store = tx.objectStore(this.storeName);
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => reject(request.error);
-      });
-    }
-    async getRange(startDate, endDate) {
-      const db = await this.open();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(this.storeName, "readonly");
-        const store = tx.objectStore(this.storeName);
-        const range = IDBKeyRange.bound(startDate, endDate);
-        const request = store.getAll(range);
-        request.onsuccess = () => resolve(request.result || []);
-        request.onerror = () => reject(request.error);
-      });
-    }
-    async importAll(records) {
-      const db = await this.open();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(this.storeName, "readwrite");
-        const store = tx.objectStore(this.storeName);
-        for (const record of records) {
-          store.put(record);
-        }
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => reject(tx.error);
-        tx.onabort = () => reject(tx.error);
-      });
-    }
-  };
-
   // src/stats/StatsTracker.js
-  var STAT_FIELDS = [
-    "videoCount",
-    "watchTimeSec",
-    "skipLiveCount",
-    "skipAdCount",
-    "blockKeywordCount",
-    "aiLikeCount",
-    "speedSkipCount"
-  ];
   var StatsTracker = class {
     constructor(store = new StatsStore(), options = {}) {
       this.store = store;
@@ -721,6 +1314,9 @@
       this.currentRecord = null;
       this.flushTimer = null;
       this.timeRemainder = 0;
+      this.revision = 0;
+      this.flushedRevision = 0;
+      this.flushQueue = Promise.resolve();
       this.updateHandlers = [];
     }
     async init() {
@@ -760,20 +1356,26 @@
       await this.ensureDate(today);
     }
     async ensureDate(dateStr) {
+      var _a;
       if (this.currentDate === dateStr && this.currentRecord)
         return;
-      const existing = await this.store.get(dateStr);
+      if (((_a = this.dateChange) == null ? void 0 : _a.date) === dateStr)
+        return this.dateChange.promise;
+      const change = { date: dateStr, promise: this.loadDate(dateStr) };
+      this.dateChange = change;
+      try {
+        await change.promise;
+      } finally {
+        if (this.dateChange === change)
+          this.dateChange = null;
+      }
+    }
+    async loadDate(dateStr) {
+      await this.flush();
+      const existing = await this.store.getForTracking(dateStr);
       this.currentDate = dateStr;
       this.currentRecord = existing || this.getEmptyRecord(dateStr);
       this.timeRemainder = 0;
-      this.scheduleFlush(true);
-      this.emitUpdate();
-    }
-    async refreshCurrent() {
-      const dateStr = this.currentDate || this.formatDate(/* @__PURE__ */ new Date());
-      const existing = await this.store.get(dateStr);
-      this.currentDate = dateStr;
-      this.currentRecord = existing || this.getEmptyRecord(dateStr);
       this.emitUpdate();
     }
     async maybeRollOver() {
@@ -789,6 +1391,7 @@
         return;
       const value = Number.isFinite(delta) ? delta : 0;
       this.currentRecord[field] = (this.currentRecord[field] || 0) + value;
+      this.revision++;
       this.scheduleFlush();
       this.emitUpdate();
     }
@@ -810,20 +1413,26 @@
       }
       return this.getEmptyRecord(this.formatDate(/* @__PURE__ */ new Date()));
     }
-    scheduleFlush(immediate = false) {
+    scheduleFlush() {
       if (this.flushTimer)
         return;
-      const delay = immediate ? 0 : this.flushIntervalMs;
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null;
         this.flush().catch(() => {
         });
-      }, delay);
+      }, this.flushIntervalMs);
     }
-    async flush() {
-      if (!this.currentRecord)
-        return;
-      await this.store.put(this.currentRecord);
+    flush() {
+      const result = this.flushQueue.then(async () => {
+        if (!this.currentRecord || this.flushedRevision === this.revision)
+          return;
+        const revision = this.revision;
+        await this.store.put({ ...this.currentRecord });
+        this.flushedRevision = revision;
+      });
+      this.flushQueue = result.catch(() => {
+      });
+      return result;
     }
   };
 
@@ -1641,6 +2250,7 @@
                     <button class="default-states-cancel-btn" style="flex: 1; padding: 8px 10px; background: rgba(255,255,255,0.08); color: white; border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer;">\u53D6\u6D88</button>
                 </div>
             `;
+      dialog.firstElementChild.after(scriptData.createControls());
       document.body.appendChild(dialog);
       const closeDialog = () => dialog.remove();
       dialog.querySelector(".default-states-close-btn").addEventListener("click", closeDialog);
@@ -1778,14 +2388,6 @@
                     </div>
                 </div>
 
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <div style="color: rgba(255,255,255,0.85); font-weight: 600;">\u6570\u636E\u5BFC\u5165/\u5BFC\u51FA</div>
-                    <div style="color: rgba(255,255,255,0.6); font-size: 11px;">\u5BFC\u5165\u540C\u65E5\u6570\u636E\u5C06\u8986\u76D6\u672C\u5730</div>
-                </div>
-                <div class="stats-actions" style="display: flex; gap: 10px;">
-                    <button class="stats-export-btn" style="flex: 1; padding: 8px 10px; background: #2d8cf0; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">\u5BFC\u51FA\u6570\u636E</button>
-                    <button class="stats-import-btn" style="flex: 1; padding: 8px 10px; background: #19be6b; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">\u5BFC\u5165\u6570\u636E</button>
-                </div>
             `;
       document.body.appendChild(dialog);
       dialog.querySelector(".stats-close-btn").addEventListener("click", () => dialog.remove());
@@ -1796,6 +2398,7 @@
       const rangeSelect = dialog.querySelector(".stats-range-select");
       const yearSelect = dialog.querySelector(".stats-year-select");
       const store = this.statsTracker.getStore();
+      await this.statsTracker.flush();
       const allRecords = await store.getAll();
       const years = Array.from(new Set(allRecords.map((r) => Number((r.date || "").slice(0, 4))).filter(Boolean))).sort();
       const currentYear = (/* @__PURE__ */ new Date()).getFullYear();
@@ -1819,59 +2422,11 @@
       };
       rangeSelect.addEventListener("change", renderSummary);
       yearSelect.addEventListener("change", renderYearViews);
-      dialog.querySelector(".stats-export-btn").addEventListener("click", async () => {
-        const records = await store.getAll();
-        const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "douyin-stats.json";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      });
-      dialog.querySelector(".stats-import-btn").addEventListener("click", () => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = "application/json";
-        input.onchange = async () => {
-          if (!input.files || input.files.length === 0)
-            return;
-          const file = input.files[0];
-          const text = await file.text();
-          let records = [];
-          try {
-            records = JSON.parse(text);
-          } catch (err) {
-            alert("\u5BFC\u5165\u5931\u8D25\uFF1A\u6587\u4EF6\u683C\u5F0F\u4E0D\u6B63\u786E");
-            return;
-          }
-          const confirmed = confirm("\u5982\u6709\u91CD\u590D\u65E5\u671F\uFF0C\u5C06\u4EE5\u5BFC\u5165\u6570\u636E\u4E3A\u51C6\uFF0C\u8986\u76D6\u672C\u5730\u5B58\u91CF\u3002\u662F\u5426\u7EE7\u7EED\uFF1F");
-          if (!confirmed)
-            return;
-          const normalized = records.filter((item) => item && typeof item.date === "string").map((item) => this.normalizeRecord(item));
-          await store.importAll(normalized);
-          await this.statsTracker.refreshCurrent();
-          await renderSummary();
-          await renderYearViews();
-          this.notificationManager.showMessage("\u{1F4E5} \u6570\u636E\u5BFC\u5165\u5B8C\u6210");
-        };
-        input.click();
-      });
       await renderSummary();
       await renderYearViews();
       setTimeout(() => {
         this.statsDialogBusy = false;
       }, 120);
-    }
-    normalizeRecord(record) {
-      const normalized = { date: record.date };
-      STAT_FIELDS.forEach((field) => {
-        const value = Number(record[field]);
-        normalized[field] = Number.isFinite(value) ? value : 0;
-      });
-      return normalized;
     }
     async getRangeRecords(store, range) {
       const now = /* @__PURE__ */ new Date();
@@ -2309,48 +2864,6 @@
         this.config.normalizeKeywordScopes(blockConfig.keywordScopes[keyword])
       ]));
       const createDefaultKeywordScopes = () => this.config.getDefaultKeywordScopes();
-      const normalizeImportedEntries = (entries) => {
-        const normalized = [];
-        const seen = /* @__PURE__ */ new Set();
-        entries.forEach((entry) => {
-          var _a;
-          const keyword = typeof entry === "string" ? entry.trim() : String((_a = entry == null ? void 0 : entry.keyword) != null ? _a : "").trim();
-          const scopes = typeof entry === "string" ? createDefaultKeywordScopes() : this.config.normalizeKeywordScopes(entry == null ? void 0 : entry.scopes);
-          if (keyword && !seen.has(keyword)) {
-            seen.add(keyword);
-            normalized.push({ keyword, scopes });
-          }
-        });
-        return normalized;
-      };
-      const mergeImportedEntries = (entries) => {
-        const imported = normalizeImportedEntries(entries);
-        if (!imported.length) {
-          return false;
-        }
-        imported.forEach(({ keyword, scopes }) => {
-          if (!Object.prototype.hasOwnProperty.call(tempKeywordScopes, keyword)) {
-            tempKeywordScopes[keyword] = scopes;
-          }
-        });
-        const allKeywords = [.../* @__PURE__ */ new Set([...tempKeywords, ...imported.map((item) => item.keyword)])];
-        tempKeywords.splice(0, tempKeywords.length, ...allKeywords);
-        return true;
-      };
-      const parseImportedContent = (content2, fileName) => {
-        if (/\.json$/i.test(fileName)) {
-          try {
-            const parsed = JSON.parse(content2);
-            if ((parsed == null ? void 0 : parsed.type) === "douyin-enhancer-keywords" && parsed.version === 1 && Array.isArray(parsed.keywords)) {
-              return parsed.keywords;
-            }
-          } catch (error) {
-            return null;
-          }
-          return null;
-        }
-        return content2.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
-      };
       const updateList = () => {
         const container = document.querySelector(".keyword-list");
         if (!container)
@@ -2494,16 +3007,6 @@
                             color: white; border: none; border-radius: 4px; cursor: pointer;">\u6DFB\u52A0</button>
                 </div>
 
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button class="import-keywords" style="flex: 1; padding: 8px 12px; background: rgba(52, 152, 219, 0.8);
-                            color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                        \u{1F4C1} \u5BFC\u5165\u5173\u952E\u5B57
-                    </button>
-                    <button class="export-keywords" style="flex: 1; padding: 8px 12px; background: rgba(155, 89, 182, 0.8);
-                            color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                        \u{1F4BE} \u5BFC\u51FA\u5173\u952E\u5B57
-                    </button>
-                </div>
                 <div class="keyword-list" style="margin-bottom: 15px; max-height: 200px; overflow-y: auto;"></div>
             `;
       const dialog = UIFactory.createDialog("keyword-setting-dialog", "\u5185\u5BB9\u5C4F\u853D\u8BBE\u7F6E", content, () => {
@@ -2581,60 +3084,6 @@
       });
       dialog.querySelector(".block-fictional-checkbox").addEventListener("click", (e) => {
         e.stopPropagation();
-      });
-      const exportKeywords = () => {
-        const content2 = JSON.stringify({
-          type: "douyin-enhancer-keywords",
-          version: 1,
-          keywords: tempKeywords.map((keyword) => ({
-            keyword,
-            scopes: tempKeywordScopes[keyword] || createDefaultKeywordScopes()
-          }))
-        }, null, 2);
-        const blob = new Blob([content2], { type: "application/json;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `\u6296\u97F3\u5C4F\u853D\u5173\u952E\u5B57_${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        this.notificationManager.showMessage("\u{1F4BE} \u5185\u5BB9\u5C4F\u853D: \u5173\u952E\u5B57\u5DF2\u5BFC\u51FA");
-      };
-      dialog.querySelector(".export-keywords").addEventListener("click", (e) => {
-        e.stopPropagation();
-        exportKeywords();
-      });
-      const importKeywords = () => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json,.txt";
-        input.addEventListener("change", (e) => {
-          const file = e.target.files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (e2) => {
-              const content2 = e2.target.result;
-              const entries = parseImportedContent(content2, file.name);
-              if (entries && mergeImportedEntries(entries)) {
-                updateList();
-                this.notificationManager.showMessage("\u{1F4C1} \u5185\u5BB9\u5C4F\u853D: \u5173\u952E\u5B57\u5BFC\u5165\u6210\u529F");
-              } else {
-                alert("\u6587\u4EF6\u5185\u5BB9\u4E3A\u7A7A\u6216\u683C\u5F0F\u4E0D\u6B63\u786E\uFF01");
-              }
-            };
-            reader.onerror = () => {
-              alert("\u6587\u4EF6\u8BFB\u53D6\u5931\u8D25\uFF01");
-            };
-            reader.readAsText(file, "utf-8");
-          }
-        });
-        input.click();
-      };
-      dialog.querySelector(".import-keywords").addEventListener("click", (e) => {
-        e.stopPropagation();
-        importKeywords();
       });
       updateList();
     }
@@ -3095,8 +3544,11 @@
     constructor() {
       this.notificationManager = new NotificationManager();
       this.config = new ConfigManager();
-      this.statsStore = new StatsStore();
-      this.statsTracker = new StatsTracker(this.statsStore);
+      this.statsStore = new StatsStore({ directory: scriptData });
+      this.statsTracker = new StatsTracker(this.statsStore, {
+        flushIntervalMs: scriptData.active ? 1e4 : 2e3
+      });
+      scriptData.beforeConnect = () => this.statsTracker.flush();
       this.videoController = new VideoController(this.notificationManager, this.statsTracker);
       this.uiManager = new UIManager(this.config, this.videoController, this.notificationManager, this.statsTracker);
       this.aiDetector = new AIDetector(this.videoController, this.config);
@@ -3117,6 +3569,11 @@
       this.injectStyles();
       this.statsTracker.init().catch((err) => {
         console.error("\u7EDF\u8BA1\u6A21\u5757\u521D\u59CB\u5316\u5931\u8D25:", err);
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          this.statsTracker.flush().catch((err) => console.error("\u7EDF\u8BA1\u4FDD\u5B58\u5931\u8D25:", err));
+        }
       });
       document.addEventListener("keydown", (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) {
@@ -3845,7 +4302,6 @@
   ];
   var QUALITY_PLUGIN_SELECTOR = ".QualitySwitchNewPlugin";
   var QUALITY_TRIGGER_SELECTOR = '[data-e2e="quality"]';
-  var PURIFICATION_KEY = "douyin-enhancer-live-defaults";
   var PURIFICATION_OPTIONS = [
     { key: "danmaku", label: "\u5F39\u5E55\u5F00\u5173" },
     { key: "giftDanmaku", label: "\u9001\u793C\u4FE1\u606F", nativeLabel: "\u9001\u793C\u4FE1\u606F" },
@@ -3868,7 +4324,7 @@
         giftDanmaku: true,
         lotteryDanmaku: true,
         giftEffects: true,
-        ...JSON.parse(localStorage.getItem(PURIFICATION_KEY) || "{}")
+        ...JSON.parse(settingsStorage.getItem(LIVE_DEFAULTS_KEY) || "{}")
       };
       this.roomKey = "";
       this.appliedDefaults = /* @__PURE__ */ new Set();
@@ -4168,12 +4624,13 @@
       container.className = "dy-live-purification";
       container.tabIndex = 0;
       container.innerHTML = `<span>\u76F4\u64AD\u51C0\u5316</span><div class="dy-live-purification-panel"><strong>\u76F4\u64AD\u51C0\u5316</strong>${PURIFICATION_OPTIONS.map((option) => `<label>${option.label}<input type="checkbox" role="switch" data-key="${option.key}" aria-label="${option.label}"></label>`).join("")}<p>\u8FD9\u91CC\u53EA\u5F71\u54CD\u6BCF\u6B21\u8FDB\u5165\u76F4\u64AD\u95F4\u65F6\u7684\u9ED8\u8BA4\u503C\uFF0C\u4E0D\u5F71\u54CD\u540E\u7EED\u6B63\u5E38\u5F00\u5173\u76F8\u5173\u9009\u9879\u3002</p></div>`;
+      container.querySelector(".dy-live-purification-panel").prepend(scriptData.createControls());
       PURIFICATION_OPTIONS.forEach((option) => {
         const input = container.querySelector(`[data-key="${option.key}"]`);
         input.checked = option.inverted ? !this.purificationDefaults[option.key] : this.purificationDefaults[option.key];
         input.addEventListener("change", () => {
           this.purificationDefaults[option.key] = option.inverted ? !input.checked : input.checked;
-          localStorage.setItem(PURIFICATION_KEY, JSON.stringify(this.purificationDefaults));
+          settingsStorage.setItem(LIVE_DEFAULTS_KEY, JSON.stringify(this.purificationDefaults));
         });
       });
       ["pointerdown", "mousedown", "mouseup", "click", "keydown"].forEach((eventName) => {
@@ -4318,6 +4775,15 @@
   patchHistoryMethod("pushState");
   patchHistoryMethod("replaceState");
   window.addEventListener("popstate", notifyRouteChange);
-  window.addEventListener("douyin-enhancer-route-change", ensureEnhancerForCurrentRoute);
-  ensureEnhancerForCurrentRoute();
+  void scriptData.restore().then(() => {
+    const initialize = () => {
+      window.addEventListener("douyin-enhancer-route-change", ensureEnhancerForCurrentRoute);
+      ensureEnhancerForCurrentRoute();
+    };
+    if (document.head) {
+      initialize();
+    } else {
+      document.addEventListener("DOMContentLoaded", initialize, { once: true });
+    }
+  });
 })();

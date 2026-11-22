@@ -1,14 +1,6 @@
-import { StatsStore } from './StatsStore.js';
+import { StatsStore, STAT_FIELDS } from './StatsStore.js';
 
-export const STAT_FIELDS = [
-    'videoCount',
-    'watchTimeSec',
-    'skipLiveCount',
-    'skipAdCount',
-    'blockKeywordCount',
-    'aiLikeCount',
-    'speedSkipCount'
-];
+export { STAT_FIELDS };
 
 export class StatsTracker {
     constructor(store = new StatsStore(), options = {}) {
@@ -18,6 +10,9 @@ export class StatsTracker {
         this.currentRecord = null;
         this.flushTimer = null;
         this.timeRemainder = 0;
+        this.revision = 0;
+        this.flushedRevision = 0;
+        this.flushQueue = Promise.resolve();
         this.updateHandlers = [];
     }
 
@@ -66,19 +61,22 @@ export class StatsTracker {
 
     async ensureDate(dateStr) {
         if (this.currentDate === dateStr && this.currentRecord) return;
-        const existing = await this.store.get(dateStr);
+        if (this.dateChange?.date === dateStr) return this.dateChange.promise;
+        const change = { date: dateStr, promise: this.loadDate(dateStr) };
+        this.dateChange = change;
+        try {
+            await change.promise;
+        } finally {
+            if (this.dateChange === change) this.dateChange = null;
+        }
+    }
+
+    async loadDate(dateStr) {
+        await this.flush();
+        const existing = await this.store.getForTracking(dateStr);
         this.currentDate = dateStr;
         this.currentRecord = existing || this.getEmptyRecord(dateStr);
         this.timeRemainder = 0;
-        this.scheduleFlush(true);
-        this.emitUpdate();
-    }
-
-    async refreshCurrent() {
-        const dateStr = this.currentDate || this.formatDate(new Date());
-        const existing = await this.store.get(dateStr);
-        this.currentDate = dateStr;
-        this.currentRecord = existing || this.getEmptyRecord(dateStr);
         this.emitUpdate();
     }
 
@@ -94,6 +92,7 @@ export class StatsTracker {
         if (!STAT_FIELDS.includes(field)) return;
         const value = Number.isFinite(delta) ? delta : 0;
         this.currentRecord[field] = (this.currentRecord[field] || 0) + value;
+        this.revision++;
         this.scheduleFlush();
         this.emitUpdate();
     }
@@ -116,17 +115,22 @@ export class StatsTracker {
         return this.getEmptyRecord(this.formatDate(new Date()));
     }
 
-    scheduleFlush(immediate = false) {
+    scheduleFlush() {
         if (this.flushTimer) return;
-        const delay = immediate ? 0 : this.flushIntervalMs;
         this.flushTimer = setTimeout(() => {
             this.flushTimer = null;
             this.flush().catch(() => {});
-        }, delay);
+        }, this.flushIntervalMs);
     }
 
-    async flush() {
-        if (!this.currentRecord) return;
-        await this.store.put(this.currentRecord);
+    flush() {
+        const result = this.flushQueue.then(async () => {
+            if (!this.currentRecord || this.flushedRevision === this.revision) return;
+            const revision = this.revision;
+            await this.store.put({ ...this.currentRecord });
+            this.flushedRevision = revision;
+        });
+        this.flushQueue = result.catch(() => {});
+        return result;
     }
 }

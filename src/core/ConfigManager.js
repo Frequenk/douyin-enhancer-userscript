@@ -1,3 +1,5 @@
+import { settingsStorage } from './ScriptData.js';
+
 export class ConfigManager {
         constructor() {
             this.defaultToggleStatesFallback = {
@@ -68,7 +70,7 @@ export class ConfigManager {
         loadDefaultButtonStates() {
             let savedStates = {};
             try {
-                savedStates = JSON.parse(localStorage.getItem('douyin_default_toggle_states') || '{}');
+                savedStates = JSON.parse(settingsStorage.getItem('douyin_default_toggle_states') || '{}');
             } catch (error) {
                 savedStates = {};
             }
@@ -165,7 +167,7 @@ export class ConfigManager {
         loadKeywords() {
             let savedKeywords = [];
             try {
-                savedKeywords = JSON.parse(localStorage.getItem('douyin_blocked_keywords') || '["店", "甄选"]');
+                savedKeywords = JSON.parse(settingsStorage.getItem('douyin_blocked_keywords') || '["店", "甄选"]');
             } catch (error) {
                 savedKeywords = [];
             }
@@ -179,7 +181,7 @@ export class ConfigManager {
         loadKeywordScopes() {
             let savedScopes = {};
             try {
-                savedScopes = JSON.parse(localStorage.getItem('douyin_blocked_keyword_scopes') || '{}');
+                savedScopes = JSON.parse(settingsStorage.getItem('douyin_blocked_keyword_scopes') || '{}');
             } catch (error) {
                 savedScopes = {};
             }
@@ -206,72 +208,72 @@ export class ConfigManager {
         }
 
         loadAutoCleanScreenSetting() {
-            return localStorage.getItem('douyin_auto_clean_screen_enabled') === 'true';
+            return settingsStorage.getItem('douyin_auto_clean_screen_enabled') === 'true';
         }
 
         loadSpeedSeconds() {
-            const value = parseInt(localStorage.getItem('douyin_speed_mode_seconds') || '6', 10);
+            const value = parseInt(settingsStorage.getItem('douyin_speed_mode_seconds') || '6', 10);
             return Number.isFinite(value) ? Math.min(Math.max(value, 1), 3600) : 6;
         }
 
         loadSpeedModeType() {
-            const mode = localStorage.getItem('douyin_speed_mode_type') || 'fixed';
+            const mode = settingsStorage.getItem('douyin_speed_mode_type') || 'fixed';
             return mode === 'random' ? 'random' : 'fixed';
         }
 
         loadSpeedMinSeconds() {
-            const value = parseInt(localStorage.getItem('douyin_speed_mode_min_seconds') || '5', 10);
+            const value = parseInt(settingsStorage.getItem('douyin_speed_mode_min_seconds') || '5', 10);
             return Number.isFinite(value) ? Math.min(Math.max(value, 1), 3600) : 5;
         }
 
         loadSpeedMaxSeconds() {
-            const value = parseInt(localStorage.getItem('douyin_speed_mode_max_seconds') || '10', 10);
+            const value = parseInt(settingsStorage.getItem('douyin_speed_mode_max_seconds') || '10', 10);
             return Number.isFinite(value) ? Math.min(Math.max(value, 1), 3600) : 10;
         }
 
         loadAiContent() {
-            return localStorage.getItem('douyin_ai_content') || '露脸的美女';
+            return settingsStorage.getItem('douyin_ai_content') || '露脸的美女';
         }
 
         loadAiProvider() {
             // 默认 ollama，保持向后兼容
-            return localStorage.getItem('douyin_ai_provider') || 'ollama';
+            return settingsStorage.getItem('douyin_ai_provider') || 'ollama';
         }
 
         loadAiModel() {
-            return localStorage.getItem('douyin_ai_model') || 'qwen3-vl:4b';
+            return settingsStorage.getItem('douyin_ai_model') || 'qwen3-vl:4b';
         }
 
         loadZhipuApiKey() {
-            return localStorage.getItem('douyin_zhipu_api_key') || '';
+            return settingsStorage.getItem('douyin_zhipu_api_key') || '';
         }
 
         loadZhipuModel() {
-            return localStorage.getItem('douyin_zhipu_model') || 'glm-4.6v-flash';
+            return settingsStorage.getItem('douyin_zhipu_model') || 'glm-4.6v-flash';
         }
 
         loadTargetResolution() {
-            return localStorage.getItem('douyin_target_resolution') || '4K';
+            return settingsStorage.getItem('douyin_target_resolution') || '4K';
         }
 
         loadPressRSetting() {
-            return localStorage.getItem('douyin_press_r_enabled') !== 'false'; // 默认开启
+            return settingsStorage.getItem('douyin_press_r_enabled') !== 'false'; // 默认开启
         }
 
         loadAutoLikeSetting() {
-            return localStorage.getItem('douyin_auto_like_enabled') !== 'false'; // 默认开启
+            return settingsStorage.getItem('douyin_auto_like_enabled') !== 'false'; // 默认开启
         }
 
         loadBlockNameSetting() {
-            return localStorage.getItem('douyin_block_name_enabled') !== 'false'; // 默认开启
+            return settingsStorage.getItem('douyin_block_name_enabled') !== 'false'; // 默认开启
         }
 
         loadBlockDescSetting() {
-            return localStorage.getItem('douyin_block_desc_enabled') !== 'false'; // 默认开启
+            return settingsStorage.getItem('douyin_block_desc_enabled') !== 'false'; // 默认开启
         }
 
         loadBlockTagsSetting() {
-            return localStorage.getItem('douyin_block_tags_enabled') !== 'false'; // 默认开启
+            return settingsStorage.getItem('douyin_block_tags_enabled') !== 'false'; // 默认开启
         }
 
         saveKeywords(keywords, scopes = {}) {
@@ -286,130 +288,130 @@ export class ConfigManager {
 
             this.config.blockKeywords.keywords = normalizedKeywords;
             this.config.blockKeywords.keywordScopes = normalizedScopes;
-            localStorage.setItem('douyin_blocked_keywords', JSON.stringify(normalizedKeywords));
-            localStorage.setItem('douyin_blocked_keyword_scopes', JSON.stringify(normalizedScopes));
+            settingsStorage.setItem('douyin_blocked_keywords', JSON.stringify(normalizedKeywords));
+            settingsStorage.setItem('douyin_blocked_keyword_scopes', JSON.stringify(normalizedScopes));
         }
 
         saveAutoCleanScreenSetting(enabled) {
             this.config.autoCleanScreen.enabled = enabled;
-            localStorage.setItem('douyin_auto_clean_screen_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_auto_clean_screen_enabled', enabled.toString());
         }
 
         saveSpeedSeconds(seconds) {
             this.config.speedMode.seconds = seconds;
-            localStorage.setItem('douyin_speed_mode_seconds', seconds.toString());
+            settingsStorage.setItem('douyin_speed_mode_seconds', seconds.toString());
         }
 
         saveSpeedModeType(mode) {
             this.config.speedMode.mode = mode;
-            localStorage.setItem('douyin_speed_mode_type', mode);
+            settingsStorage.setItem('douyin_speed_mode_type', mode);
         }
 
         saveSpeedModeRange(minSeconds, maxSeconds) {
             this.config.speedMode.minSeconds = minSeconds;
             this.config.speedMode.maxSeconds = maxSeconds;
-            localStorage.setItem('douyin_speed_mode_min_seconds', minSeconds.toString());
-            localStorage.setItem('douyin_speed_mode_max_seconds', maxSeconds.toString());
+            settingsStorage.setItem('douyin_speed_mode_min_seconds', minSeconds.toString());
+            settingsStorage.setItem('douyin_speed_mode_max_seconds', maxSeconds.toString());
         }
 
         saveAiContent(content) {
             this.config.aiPreference.content = content;
-            localStorage.setItem('douyin_ai_content', content);
+            settingsStorage.setItem('douyin_ai_content', content);
         }
 
         saveAiProvider(provider) {
             this.config.aiPreference.provider = provider;
-            localStorage.setItem('douyin_ai_provider', provider);
+            settingsStorage.setItem('douyin_ai_provider', provider);
         }
 
         saveAiModel(model) {
             this.config.aiPreference.model = model;
-            localStorage.setItem('douyin_ai_model', model);
+            settingsStorage.setItem('douyin_ai_model', model);
         }
 
         saveZhipuApiKey(apiKey) {
             this.config.aiPreference.zhipuApiKey = apiKey;
-            localStorage.setItem('douyin_zhipu_api_key', apiKey);
+            settingsStorage.setItem('douyin_zhipu_api_key', apiKey);
         }
 
         saveZhipuModel(model) {
             this.config.aiPreference.zhipuModel = model;
-            localStorage.setItem('douyin_zhipu_model', model);
+            settingsStorage.setItem('douyin_zhipu_model', model);
         }
 
         saveTargetResolution(resolution) {
             this.config.onlyResolution.resolution = resolution;
-            localStorage.setItem('douyin_target_resolution', resolution);
+            settingsStorage.setItem('douyin_target_resolution', resolution);
         }
 
         savePressRSetting(enabled) {
             this.config.blockKeywords.pressR = enabled;
-            localStorage.setItem('douyin_press_r_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_press_r_enabled', enabled.toString());
         }
 
         saveAutoLikeSetting(enabled) {
             this.config.aiPreference.autoLike = enabled;
-            localStorage.setItem('douyin_auto_like_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_auto_like_enabled', enabled.toString());
         }
 
         saveBlockNameSetting(enabled) {
             this.config.blockKeywords.blockName = enabled;
-            localStorage.setItem('douyin_block_name_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_name_enabled', enabled.toString());
         }
 
         saveBlockDescSetting(enabled) {
             this.config.blockKeywords.blockDesc = enabled;
-            localStorage.setItem('douyin_block_desc_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_desc_enabled', enabled.toString());
         }
 
         saveBlockTagsSetting(enabled) {
             this.config.blockKeywords.blockTags = enabled;
-            localStorage.setItem('douyin_block_tags_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_tags_enabled', enabled.toString());
         }
 
         loadBlockAIGeneratedSetting() {
-            return localStorage.getItem('douyin_block_ai_generated_enabled') === 'true';
+            return settingsStorage.getItem('douyin_block_ai_generated_enabled') === 'true';
         }
 
         saveBlockAIGeneratedSetting(enabled) {
             this.config.blockKeywords.blockAIGenerated = enabled;
-            localStorage.setItem('douyin_block_ai_generated_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_ai_generated_enabled', enabled.toString());
         }
 
         loadBlockAIContainedSetting() {
-            return localStorage.getItem('douyin_block_ai_contained_enabled') === 'true';
+            return settingsStorage.getItem('douyin_block_ai_contained_enabled') === 'true';
         }
 
         saveBlockAIContainedSetting(enabled) {
             this.config.blockKeywords.blockAIContained = enabled;
-            localStorage.setItem('douyin_block_ai_contained_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_ai_contained_enabled', enabled.toString());
         }
 
         loadBlockAIDeclaredSetting() {
-            return localStorage.getItem('douyin_block_ai_declared_enabled') === 'true';
+            return settingsStorage.getItem('douyin_block_ai_declared_enabled') === 'true';
         }
 
         saveBlockAIDeclaredSetting(enabled) {
             this.config.blockKeywords.blockAIDeclared = enabled;
-            localStorage.setItem('douyin_block_ai_declared_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_ai_declared_enabled', enabled.toString());
         }
 
         loadBlockPersonalOpinionSetting() {
-            return localStorage.getItem('douyin_block_personal_opinion_enabled') === 'true';
+            return settingsStorage.getItem('douyin_block_personal_opinion_enabled') === 'true';
         }
 
         saveBlockPersonalOpinionSetting(enabled) {
             this.config.blockKeywords.blockPersonalOpinion = enabled;
-            localStorage.setItem('douyin_block_personal_opinion_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_personal_opinion_enabled', enabled.toString());
         }
 
         loadBlockFictionalSetting() {
-            return localStorage.getItem('douyin_block_fictional_enabled') === 'true';
+            return settingsStorage.getItem('douyin_block_fictional_enabled') === 'true';
         }
 
         saveBlockFictionalSetting(enabled) {
             this.config.blockKeywords.blockFictional = enabled;
-            localStorage.setItem('douyin_block_fictional_enabled', enabled.toString());
+            settingsStorage.setItem('douyin_block_fictional_enabled', enabled.toString());
         }
 
         saveDefaultEnabledState(key, enabled) {
@@ -417,7 +419,7 @@ export class ConfigManager {
                 return;
             }
             this.defaultButtonStates[key] = enabled ? 'enabled' : 'disabled';
-            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultButtonStates));
+            settingsStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultButtonStates));
         }
 
         saveDefaultEnabledStates(states) {
@@ -426,7 +428,7 @@ export class ConfigManager {
                     this.defaultButtonStates[key] = this.normalizeDefaultButtonState(key, states[key]);
                 }
             });
-            localStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultButtonStates));
+            settingsStorage.setItem('douyin_default_toggle_states', JSON.stringify(this.defaultButtonStates));
         }
 
         applyButtonStatesToCurrentSession(states) {

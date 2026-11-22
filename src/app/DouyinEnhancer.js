@@ -1,3 +1,4 @@
+import { scriptData } from '../core/ScriptData.js';
 import { NotificationManager } from '../core/NotificationManager.js';
 import { ConfigManager } from '../core/ConfigManager.js';
 import { VideoController } from '../core/VideoController.js';
@@ -19,8 +20,11 @@ export class DouyinEnhancer {
         constructor() {
             this.notificationManager = new NotificationManager();
             this.config = new ConfigManager();
-            this.statsStore = new StatsStore();
-            this.statsTracker = new StatsTracker(this.statsStore);
+            this.statsStore = new StatsStore({ directory: scriptData });
+            this.statsTracker = new StatsTracker(this.statsStore, {
+                flushIntervalMs: scriptData.active ? 10000 : 2000
+            });
+            scriptData.beforeConnect = () => this.statsTracker.flush();
             this.videoController = new VideoController(this.notificationManager, this.statsTracker);
             this.uiManager = new UIManager(this.config, this.videoController, this.notificationManager, this.statsTracker);
             this.aiDetector = new AIDetector(this.videoController, this.config);
@@ -44,6 +48,11 @@ export class DouyinEnhancer {
             this.injectStyles();
             this.statsTracker.init().catch((err) => {
                 console.error('统计模块初始化失败:', err);
+            });
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    this.statsTracker.flush().catch(err => console.error('统计保存失败:', err));
+                }
             });
 
             document.addEventListener('keydown', (e) => {

@@ -1,3 +1,4 @@
+import { scriptData } from './core/ScriptData.js';
 ﻿import { DouyinEnhancer } from './app/DouyinEnhancer.js';
 import { LiveEnhancer } from './app/LiveEnhancer.js';
 
@@ -65,6 +66,14 @@ function patchHistoryMethod(methodName) {
 patchHistoryMethod('pushState');
 patchHistoryMethod('replaceState');
 window.addEventListener('popstate', notifyRouteChange);
-window.addEventListener('douyin-enhancer-route-change', ensureEnhancerForCurrentRoute);
-
-ensureEnhancerForCurrentRoute();
+void scriptData.restore().then(() => {
+    const initialize = () => {
+        window.addEventListener('douyin-enhancer-route-change', ensureEnhancerForCurrentRoute);
+        ensureEnhancerForCurrentRoute();
+    };
+    if (document.head) {
+        initialize();
+    } else {
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    }
+});

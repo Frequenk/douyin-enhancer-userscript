@@ -8,6 +8,8 @@
 
 内容屏蔽按账号名称、视频简介和话题标签匹配关键字时忽略大小写。
 
+可在工具栏的「按钮设置」中选择数据缓存目录，保存设置和每日统计。把目录放在 OneDrive 等同步工具的本地文件夹中，即可在其他设备加载配置和已同步的统计。原关键词和统计的导入导出入口已移除。
+
 ## 📸 效果预览
 
 ![功能面板截图](https://raw.githubusercontent.com/Frequenk/douyin-enhancer-userscript/master/images/screenshot-2.png)

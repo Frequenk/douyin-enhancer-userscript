@@ -1,3 +1,4 @@
+import { scriptData } from '../core/ScriptData.js';
 import { SELECTORS } from '../core/selectors.js';
 import { STAT_FIELDS } from '../stats/StatsTracker.js';
 
@@ -896,6 +897,7 @@ export class UIFactory {
                 </div>
             `;
 
+            dialog.firstElementChild.after(scriptData.createControls());
             document.body.appendChild(dialog);
 
             const closeDialog = () => dialog.remove();
@@ -1038,14 +1040,6 @@ export class UIFactory {
                     </div>
                 </div>
 
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                    <div style="color: rgba(255,255,255,0.85); font-weight: 600;">数据导入/导出</div>
-                    <div style="color: rgba(255,255,255,0.6); font-size: 11px;">导入同日数据将覆盖本地</div>
-                </div>
-                <div class="stats-actions" style="display: flex; gap: 10px;">
-                    <button class="stats-export-btn" style="flex: 1; padding: 8px 10px; background: #2d8cf0; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">导出数据</button>
-                    <button class="stats-import-btn" style="flex: 1; padding: 8px 10px; background: #19be6b; color: #ffffff !important; font-weight: 600; border: none; border-radius: 6px; cursor: pointer;">导入数据</button>
-                </div>
             `;
 
             document.body.appendChild(dialog);
@@ -1059,6 +1053,7 @@ export class UIFactory {
             const yearSelect = dialog.querySelector('.stats-year-select');
             const store = this.statsTracker.getStore();
 
+            await this.statsTracker.flush();
             const allRecords = await store.getAll();
             const years = Array.from(new Set(allRecords.map(r => Number((r.date || '').slice(0, 4))).filter(Boolean))).sort();
             const currentYear = new Date().getFullYear();
@@ -1086,48 +1081,6 @@ export class UIFactory {
             rangeSelect.addEventListener('change', renderSummary);
             yearSelect.addEventListener('change', renderYearViews);
 
-            dialog.querySelector('.stats-export-btn').addEventListener('click', async () => {
-                const records = await store.getAll();
-                const blob = new Blob([JSON.stringify(records, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = 'douyin-stats.json';
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(url);
-            });
-
-            dialog.querySelector('.stats-import-btn').addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'application/json';
-                input.onchange = async () => {
-                    if (!input.files || input.files.length === 0) return;
-                    const file = input.files[0];
-                    const text = await file.text();
-                    let records = [];
-                    try {
-                        records = JSON.parse(text);
-                    } catch (err) {
-                        alert('导入失败：文件格式不正确');
-                        return;
-                    }
-                    const confirmed = confirm('如有重复日期，将以导入数据为准，覆盖本地存量。是否继续？');
-                    if (!confirmed) return;
-                    const normalized = records
-                        .filter(item => item && typeof item.date === 'string')
-                        .map(item => this.normalizeRecord(item));
-                    await store.importAll(normalized);
-                    await this.statsTracker.refreshCurrent();
-                    await renderSummary();
-                    await renderYearViews();
-                    this.notificationManager.showMessage('📥 数据导入完成');
-                };
-                input.click();
-            });
-
             await renderSummary();
             await renderYearViews();
             setTimeout(() => {
@@ -1135,14 +1088,6 @@ export class UIFactory {
             }, 120);
         }
 
-        normalizeRecord(record) {
-            const normalized = { date: record.date };
-            STAT_FIELDS.forEach(field => {
-                const value = Number(record[field]);
-                normalized[field] = Number.isFinite(value) ? value : 0;
-            });
-            return normalized;
-        }
 
         async getRangeRecords(store, range) {
             const now = new Date();
@@ -1640,64 +1585,6 @@ export class UIFactory {
 
             const createDefaultKeywordScopes = () => this.config.getDefaultKeywordScopes();
 
-            const normalizeImportedEntries = (entries) => {
-                const normalized = [];
-                const seen = new Set();
-
-                entries.forEach(entry => {
-                    const keyword = typeof entry === 'string'
-                        ? entry.trim()
-                        : String(entry?.keyword ?? '').trim();
-                    const scopes = typeof entry === 'string'
-                        ? createDefaultKeywordScopes()
-                        : this.config.normalizeKeywordScopes(entry?.scopes);
-
-                    if (keyword && !seen.has(keyword)) {
-                        seen.add(keyword);
-                        normalized.push({ keyword, scopes });
-                    }
-                });
-
-                return normalized;
-            };
-
-            const mergeImportedEntries = (entries) => {
-                const imported = normalizeImportedEntries(entries);
-                if (!imported.length) {
-                    return false;
-                }
-
-                imported.forEach(({ keyword, scopes }) => {
-                    if (!Object.prototype.hasOwnProperty.call(tempKeywordScopes, keyword)) {
-                        tempKeywordScopes[keyword] = scopes;
-                    }
-                });
-                const allKeywords = [...new Set([...tempKeywords, ...imported.map(item => item.keyword)])];
-                tempKeywords.splice(0, tempKeywords.length, ...allKeywords);
-                return true;
-            };
-
-            const parseImportedContent = (content, fileName) => {
-                if (/\.json$/i.test(fileName)) {
-                    try {
-                        const parsed = JSON.parse(content);
-                        if (parsed?.type === 'douyin-enhancer-keywords'
-                            && parsed.version === 1
-                            && Array.isArray(parsed.keywords)) {
-                            return parsed.keywords;
-                        }
-                    } catch (error) {
-                        return null;
-                    }
-
-                    return null;
-                }
-
-                return content.split('\n')
-                    .map(line => line.trim())
-                    .filter(line => line.length > 0);
-            };
-
             const updateList = () => {
                 const container = document.querySelector('.keyword-list');
                 if (!container) return;
@@ -1848,16 +1735,6 @@ export class UIFactory {
                             color: white; border: none; border-radius: 4px; cursor: pointer;">添加</button>
                 </div>
 
-                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button class="import-keywords" style="flex: 1; padding: 8px 12px; background: rgba(52, 152, 219, 0.8);
-                            color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                        📁 导入关键字
-                    </button>
-                    <button class="export-keywords" style="flex: 1; padding: 8px 12px; background: rgba(155, 89, 182, 0.8);
-                            color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
-                        💾 导出关键字
-                    </button>
-                </div>
                 <div class="keyword-list" style="margin-bottom: 15px; max-height: 200px; overflow-y: auto;"></div>
             `;
 
@@ -1944,66 +1821,6 @@ export class UIFactory {
             });
             dialog.querySelector('.block-fictional-checkbox').addEventListener('click', (e) => {
                 e.stopPropagation();
-            });
-
-            // 导出功能
-            const exportKeywords = () => {
-                const content = JSON.stringify({
-                    type: 'douyin-enhancer-keywords',
-                    version: 1,
-                    keywords: tempKeywords.map(keyword => ({
-                        keyword,
-                        scopes: tempKeywordScopes[keyword] || createDefaultKeywordScopes()
-                    }))
-                }, null, 2);
-                const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `抖音屏蔽关键字_${new Date().toISOString().split('T')[0]}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                this.notificationManager.showMessage('💾 内容屏蔽: 关键字已导出');
-            };
-
-            dialog.querySelector('.export-keywords').addEventListener('click', (e) => {
-                e.stopPropagation();
-                exportKeywords();
-            });
-
-            // 导入功能
-            const importKeywords = () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json,.txt';
-                input.addEventListener('change', (e) => {
-                    const file = e.target.files[0];
-                    if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            const content = e.target.result;
-                            const entries = parseImportedContent(content, file.name);
-                            if (entries && mergeImportedEntries(entries)) {
-                                updateList();
-                                this.notificationManager.showMessage('📁 内容屏蔽: 关键字导入成功');
-                            } else {
-                                alert('文件内容为空或格式不正确！');
-                            }
-                        };
-                        reader.onerror = () => {
-                            alert('文件读取失败！');
-                        };
-                        reader.readAsText(file, 'utf-8');
-                    }
-                });
-                input.click();
-            };
-
-            dialog.querySelector('.import-keywords').addEventListener('click', (e) => {
-                e.stopPropagation();
-                importKeywords();
             });
 
             updateList();
